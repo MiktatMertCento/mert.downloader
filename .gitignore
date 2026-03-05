@@ -1,0 +1,17 @@
+# Binaries
+*.exe
+insta-downloader
+
+# Downloads
+downloads/
+
+# Cookies (sensitive)
+cookies.txt
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

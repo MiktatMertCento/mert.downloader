@@ -1,0 +1,8 @@
+# Netscape HTTP Cookie File
+# https://curl.se/docs/http-cookies.html
+# Export your Instagram cookies using "Get cookies.txt" browser extension
+# Then rename this file to cookies.txt
+
+.instagram.com	TRUE	/	TRUE	0	sessionid	YOUR_SESSION_ID_HERE
+.instagram.com	TRUE	/	TRUE	0	csrftoken	YOUR_CSRF_TOKEN_HERE
+.instagram.com	TRUE	/	TRUE	0	ds_user_id	YOUR_USER_ID_HERE
