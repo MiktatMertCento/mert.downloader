@@ -5,4 +5,4 @@
 
 .instagram.com	TRUE	/	TRUE	0	sessionid	YOUR_SESSION_ID_HERE
 .instagram.com	TRUE	/	TRUE	0	csrftoken	YOUR_CSRF_TOKEN_HERE
-.instagram.com	TRUE	/	TRUE	0	ds_user_id	YOUR_USER_ID_HERE
+.instagram.com	TRUE	/	TRUE	0	ds_user_id	YOUR_USER_ID_HERE 
