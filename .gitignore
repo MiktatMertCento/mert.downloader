@@ -5,8 +5,9 @@ insta-downloader
 # Downloads
 downloads/
 
-# Cookies (sensitive)
+# Cookies & env (sensitive)
 cookies.txt
+.env
 
 # IDE
 .vscode/
