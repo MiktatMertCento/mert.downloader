@@ -524,9 +524,15 @@ func main() {
 		return c.JSON(response)
 	})
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000"
+	}
+
+	fmt.Printf("Sunucu :%s portunda başlatılıyor\n", port)
 	fmt.Println("POST /api/download  {\"url\": \"...\"}")
 	fmt.Println("GET  /api/health")
 	fmt.Println("GET  /downloads/...")
 
-	app.Listen(":3000")
+	app.Listen(":" + port)
 }
