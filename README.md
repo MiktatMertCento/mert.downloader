@@ -162,6 +162,8 @@ insta-downloader/
 ├── main_test.go         # Unit testler
 ├── Dockerfile           # Multi-stage Docker build (test + build + runtime)
 ├── docker-compose.yml   # Docker Compose yapılandırması
+├── .github/workflows/
+│   └── ci.yml           # GitHub Actions CI/CD
 ├── .dockerignore        # Docker build context filtresi
 ├── .gitignore           # Git ignore kuralları
 ├── cookies.txt          # Instagram cookie dosyası (gitignore)
@@ -180,3 +182,4 @@ insta-downloader/
 - 🎵 `ffmpeg` ve `yt-dlp` Docker container içinde en güncel sürümleriyle otomatik yüklenir.
 - 📦 İndirilen dosyalar `downloads/<id>/` klasörüne kaydedilir ve `/downloads/...` endpoint'i üzerinden erişilebilir.
 - 🎥 Videolar her zaman en yüksek kalitede MP4 formatında indirilir.
+- 🚀 GitHub Actions ile her push'ta testler çalışır. `v*` tag'i push edildiğinde Docker image `ghcr.io`'ya yüklenir ve GitHub Release oluşturulur.
