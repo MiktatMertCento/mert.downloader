@@ -25,8 +25,8 @@ export default function DownloadForm({ onSubmit, isLoading }: DownloadFormProps)
                         type="url"
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
-                        placeholder="Instagram veya YouTube linkini yapıştır..."
-                        className="flex-1 bg-transparent px-5 py-4 text-text placeholder:text-text-muted outline-none text-lg"
+                        placeholder="Instagram / YouTube linki..."
+                        className="flex-1 min-w-0 bg-transparent px-4 py-3 sm:px-5 sm:py-4 text-text placeholder:text-text-muted outline-none text-base sm:text-lg"
                         disabled={isLoading}
                         aria-label="Video URL"
                     />
@@ -34,7 +34,7 @@ export default function DownloadForm({ onSubmit, isLoading }: DownloadFormProps)
                         id="download-btn"
                         type="submit"
                         disabled={isLoading || !url.trim()}
-                        className="mr-2 px-6 py-3 bg-gradient-to-r from-primary to-primary-dark text-white font-semibold rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-primary/25 hover:scale-105 disabled:opacity-40 disabled:hover:scale-100 disabled:hover:shadow-none cursor-pointer disabled:cursor-not-allowed"
+                        className="shrink-0 mr-1 sm:mr-2 px-4 py-2 sm:px-6 sm:py-3 text-sm sm:text-base bg-gradient-to-r from-primary to-primary-dark text-white font-semibold rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-primary/25 hover:scale-105 disabled:opacity-40 disabled:hover:scale-100 disabled:hover:shadow-none cursor-pointer disabled:cursor-not-allowed"
                     >
                         {isLoading ? (
                             <span className="flex items-center gap-2">
