@@ -20,3 +20,4 @@ Thumbs.db
 web/node_modules/
 web/dist/
 web/.idea/
+web/pnpm-lock.yaml
