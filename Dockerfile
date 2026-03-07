@@ -26,6 +26,6 @@ COPY --from=builder /build/insta-downloader .
 
 RUN mkdir -p downloads
 
-EXPOSE 3000
+EXPOSE 1905
 
 CMD ["./insta-downloader"]
