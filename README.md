@@ -41,7 +41,7 @@ docker compose up -d
 Bu komut:
 - Go uygulamasını derler
 - `ffmpeg` ve `yt-dlp` araclarını yükler
-- Sunucuyu `http://localhost:3000` adresinde başlatır
+- Sunucuyu `http://localhost:1905` adresinde başlatır
 
 ### Durdurma
 
@@ -57,7 +57,7 @@ docker build -t insta-downloader .
 
 # Container başlat
 docker run -d \
-  -p 3000:3000 \
+  -p 1905:1905 \
   -v ./cookies.txt:/app/cookies.txt:ro \
   -v ./downloads:/app/downloads \
   --name insta-downloader \
@@ -76,7 +76,7 @@ docker run --rm insta-downloader go test -v ./...
 ### Sağlık Kontrolü
 
 ```bash
-curl http://localhost:3000/api/health
+curl http://localhost:1905/api/health
 ```
 
 ```json
@@ -89,7 +89,7 @@ curl http://localhost:3000/api/health
 ### 📷 Instagram Post İndirme
 
 ```bash
-curl -X POST http://localhost:3000/api/download \
+curl -X POST http://localhost:1905/api/download \
   -H "Content-Type: application/json" \
   -d '{"url":"https://www.instagram.com/p/ABC123xyz/"}'
 ```
@@ -97,7 +97,7 @@ curl -X POST http://localhost:3000/api/download \
 ### 🎞️ Instagram Reel İndirme
 
 ```bash
-curl -X POST http://localhost:3000/api/download \
+curl -X POST http://localhost:1905/api/download \
   -H "Content-Type: application/json" \
   -d '{"url":"https://www.instagram.com/reel/XYZ789abc/"}'
 ```
@@ -105,7 +105,7 @@ curl -X POST http://localhost:3000/api/download \
 ### 🎬 YouTube Video İndirme
 
 ```bash
-curl -X POST http://localhost:3000/api/download \
+curl -X POST http://localhost:1905/api/download \
   -H "Content-Type: application/json" \
   -d '{"url":"https://www.youtube.com/watch?v=Ma6mYcG4STw"}'
 ```
@@ -113,7 +113,7 @@ curl -X POST http://localhost:3000/api/download \
 ### 📱 YouTube Shorts İndirme
 
 ```bash
-curl -X POST http://localhost:3000/api/download \
+curl -X POST http://localhost:1905/api/download \
   -H "Content-Type: application/json" \
   -d '{"url":"https://www.youtube.com/shorts/ogGoZuJtG84"}'
 ```
@@ -121,7 +121,7 @@ curl -X POST http://localhost:3000/api/download \
 ### 🔗 YouTube Kısa Link
 
 ```bash
-curl -X POST http://localhost:3000/api/download \
+curl -X POST http://localhost:1905/api/download \
   -H "Content-Type: application/json" \
   -d '{"url":"https://youtu.be/Ma6mYcG4STw"}'
 ```

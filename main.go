@@ -526,7 +526,7 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "3000"
+		port = "1905"
 	}
 
 	fmt.Printf("Sunucu :%s portunda başlatılıyor\n", port)

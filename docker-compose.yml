@@ -2,9 +2,9 @@ services:
   insta-downloader:
     build: .
     ports:
-      - "${PORT:-3000}:${PORT:-3000}"
+      - "${PORT:-1905}:${PORT:-1905}"
     environment:
-      - PORT=${PORT:-3000}
+      - PORT=${PORT:-1905}
     volumes:
       - ./cookies.txt:/app/cookies.txt:ro
       - ./downloads:/app/downloads
