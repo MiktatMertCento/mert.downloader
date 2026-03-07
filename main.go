@@ -230,9 +230,6 @@ func parseAPIItem(item map[string]interface{}, shortcode string) (*MediaInfo, er
 
 	if caption, ok := item["caption"].(map[string]interface{}); ok {
 		if text, ok := caption["text"].(string); ok {
-			if len(text) > 200 {
-				text = text[:200] + "..."
-			}
 			info.Caption = text
 		}
 	}
@@ -339,6 +336,24 @@ func downloadFile(url, destPath string) (int64, error) {
 	return io.Copy(out, resp.Body)
 }
 
+func copyToTemp(src string) (string, error) {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return "", err
+	}
+	tmp, err := os.CreateTemp("", "cookies-*.txt")
+	if err != nil {
+		return "", err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return "", err
+	}
+	tmp.Close()
+	return tmp.Name(), nil
+}
+
 func downloadWithYTDLP(videoURL, outputDir, id string, useCookies bool) (string, error) {
 	outputPath := filepath.Join(outputDir, id+".mp4")
 
@@ -350,7 +365,12 @@ func downloadWithYTDLP(videoURL, outputDir, id string, useCookies bool) (string,
 	}
 
 	if useCookies {
-		args = append([]string{"--cookies", cookieFile}, args...)
+		tmpCookies, err := copyToTemp(cookieFile)
+		if err != nil {
+			return "", fmt.Errorf("cookie kopyalanamadı: %w", err)
+		}
+		defer os.Remove(tmpCookies)
+		args = append([]string{"--cookies", tmpCookies}, args...)
 	}
 
 	args = append(args, videoURL)
@@ -375,6 +395,31 @@ func downloadWithYTDLP(videoURL, outputDir, id string, useCookies bool) (string,
 	return "", fmt.Errorf("indirilen dosya bulunamadı")
 }
 
+func cleanupDownloads(dir string, maxAge time.Duration) {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			if time.Since(info.ModTime()) > maxAge {
+				path := filepath.Join(dir, entry.Name())
+				os.RemoveAll(path)
+				fmt.Printf("Temizlendi: %s\n", path)
+			}
+		}
+	}
+}
+
 func main() {
 	allCookies, err := parseCookieFile(cookieFile)
 	if err != nil {
@@ -392,10 +437,13 @@ func main() {
 
 	os.MkdirAll(downloadDir, 0755)
 
+	go cleanupDownloads(downloadDir, 5*time.Minute)
+
 	app := fiber.New(fiber.Config{BodyLimit: 10 * 1024 * 1024})
 	app.Use(logger.New())
 	app.Use(cors.New())
 	app.Static("/downloads", "./downloads")
+	app.Static("/", "./web/dist")
 
 	app.Get("/api/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -533,6 +581,11 @@ func main() {
 	fmt.Println("POST /api/download  {\"url\": \"...\"}")
 	fmt.Println("GET  /api/health")
 	fmt.Println("GET  /downloads/...")
+
+	// SPA fallback
+	app.Get("/*", func(c *fiber.Ctx) error {
+		return c.SendFile("./web/dist/index.html")
+	})
 
 	app.Listen(":" + port)
 }
