@@ -3,3 +3,4 @@ downloads/
 .git/
 .gitignore
 README.md
+web/node_modules/

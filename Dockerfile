@@ -1,4 +1,17 @@
-# === Build Stage ===
+# === Frontend Build ===
+FROM node:22-alpine AS frontend
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+WORKDIR /build
+
+COPY web/package.json web/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY web/ .
+RUN pnpm run build
+
+# === Go Build Stage ===
 FROM golang:1.26-alpine AS builder
 
 WORKDIR /build
@@ -22,6 +35,7 @@ RUN apk add --no-cache ffmpeg python3 py3-pip && \
 
 WORKDIR /app
 
+COPY --from=frontend /build/dist ./web/dist
 COPY --from=builder /build/insta-downloader .
 
 RUN mkdir -p downloads
