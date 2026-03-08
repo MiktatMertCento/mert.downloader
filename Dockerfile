@@ -30,7 +30,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o insta-downloader .
 # === Runtime Stage ===
 FROM alpine:3.21
 
-RUN apk add --no-cache ffmpeg python3 py3-pip && \
+RUN apk add --no-cache ffmpeg python3 py3-pip nodejs && \
     pip3 install --no-cache-dir --break-system-packages yt-dlp
 
 WORKDIR /app
