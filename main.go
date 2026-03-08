@@ -362,7 +362,7 @@ func downloadWithYTDLP(videoURL, outputDir, id string, useCookies bool) (string,
 		"--merge-output-format", "mp4",
 		"-o", outputPath,
 		"--no-playlist",
-		"--js-runtimes", "nodejs",
+		"--js-runtimes", "node",
 		"--extractor-args", "youtube:player_client=android",
 	}
 
