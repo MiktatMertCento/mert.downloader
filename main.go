@@ -479,7 +479,7 @@ func main() {
 				MediaType: "video",
 			}
 
-			filePath, err := downloadWithYTDLP(req.URL, outDir, parsed.VideoID, true)
+			filePath, err := downloadWithYTDLP(req.URL, outDir, parsed.VideoID, false)
 			if err != nil {
 				return c.Status(500).JSON(DownloadResponse{
 					Success: false, Error: fmt.Sprintf("YouTube video indirilemedi: %v", err),
