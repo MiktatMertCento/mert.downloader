@@ -363,7 +363,6 @@ func downloadWithYTDLP(videoURL, outputDir, id string, useCookies bool) (string,
 		"-o", outputPath,
 		"--no-playlist",
 		"--js-runtimes", "node",
-		"--extractor-args", "youtube:player_client=android",
 	}
 
 	if useCookies {
