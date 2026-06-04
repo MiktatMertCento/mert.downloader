@@ -444,7 +444,6 @@ func main() {
 	app.Use(logger.New())
 	app.Use(cors.New())
 	app.Static("/downloads", "./downloads")
-	app.Static("/", "./web/dist")
 
 	app.Get("/api/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -583,9 +582,13 @@ func main() {
 	fmt.Println("GET  /api/health")
 	fmt.Println("GET  /downloads/...")
 
-	// SPA fallback
-	app.Get("/*", func(c *fiber.Ctx) error {
-		return c.SendFile("./web/dist/index.html")
+	app.Get("/manifest.webmanifest", func(c *fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, "application/manifest+json")
+		return c.SendFile("./web/dist/manifest.webmanifest")
+	})
+
+	app.Static("/", "./web/dist", fiber.Static{
+		Index: "index.html",
 	})
 
 	app.Listen(":" + port)
