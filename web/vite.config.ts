@@ -7,6 +7,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const appOrigin = env.VITE_APP_ORIGIN?.replace(/\/$/, '') ?? ''
   const shareTargetAction = appOrigin ? `${appOrigin}/` : '/'
+  const manifestId = appOrigin ? `${appOrigin}/` : '/'
 
   return {
     plugins: [
@@ -16,7 +17,7 @@ export default defineConfig(({ mode }) => {
         registerType: 'autoUpdate',
         includeAssets: ['pwa-192.png', 'pwa-512.png'],
         manifest: {
-          id: '/',
+          id: manifestId,
           name: 'Mert Downloader',
           short_name: 'MertDL',
           description: 'Instagram ve YouTube video/fotoğraf indirme aracı',
@@ -49,6 +50,7 @@ export default defineConfig(({ mode }) => {
           share_target: {
             action: shareTargetAction,
             method: 'GET',
+            enctype: 'application/x-www-form-urlencoded',
             params: {
               title: 'title',
               text: 'text',

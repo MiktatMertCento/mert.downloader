@@ -9,6 +9,10 @@ COPY web/package.json web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY web/ .
+
+ARG VITE_APP_ORIGIN=https://downloader.miktatmert.dev
+ENV VITE_APP_ORIGIN=${VITE_APP_ORIGIN}
+
 RUN pnpm run build
 
 # === Go Build Stage ===
