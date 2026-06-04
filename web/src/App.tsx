@@ -4,10 +4,27 @@ import DownloadResult from './components/DownloadResult'
 import { downloadMedia, checkHealth, type DownloadResponse } from './lib/api'
 
 export default function App() {
+  const [url, setUrl] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<DownloadResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const title = params.get('title')
+    const text = params.get('text')
+    const urlParam = params.get('url')
+
+    if (title || text || urlParam) {
+      const combined = [title, text, urlParam].filter(Boolean).join(' ')
+      const match = combined.match(/https?:\/\/[^\s]+/i)
+      if (match) {
+        setUrl(match[0])
+      }
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
 
   useEffect(() => {
     checkHealth()
@@ -65,7 +82,7 @@ export default function App() {
         </div>
 
         {/* Form */}
-        <DownloadForm onSubmit={handleSubmit} isLoading={isLoading} />
+        <DownloadForm url={url} setUrl={setUrl} onSubmit={handleSubmit} isLoading={isLoading} />
 
         {/* Results */}
         <DownloadResult data={result} error={error} />
