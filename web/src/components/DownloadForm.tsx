@@ -1,12 +1,13 @@
-import { useState, type FormEvent } from 'react'
+import { type FormEvent } from 'react'
 
 interface DownloadFormProps {
+    url: string
+    setUrl: (url: string) => void
     onSubmit: (url: string) => void
     isLoading: boolean
 }
 
-export default function DownloadForm({ onSubmit, isLoading }: DownloadFormProps) {
-    const [url, setUrl] = useState('')
+export default function DownloadForm({ url, setUrl, onSubmit, isLoading }: DownloadFormProps) {
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault()

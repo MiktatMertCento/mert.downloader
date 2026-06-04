@@ -37,7 +37,16 @@ export default defineConfig({
             type: 'image/svg+xml',
             purpose: 'maskable'
           }
-        ]
+        ],
+        share_target: {
+          action: '/',
+          method: 'GET',
+          params: {
+            title: 'title',
+            text: 'text',
+            url: 'url',
+          },
+        },
       }
     })
   ],
