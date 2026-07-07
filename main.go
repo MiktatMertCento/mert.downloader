@@ -8,6 +8,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,6 +38,9 @@ type NetscapeCookie struct {
 type ParsedURL struct {
 	Shortcode string
 	IsReel    bool
+	IsStory   bool
+	Username  string
+	StoryID   string
 	Platform  string
 	VideoID   string
 }
@@ -127,6 +131,7 @@ func buildCookieHeader(igCookies map[string]string) string {
 }
 
 var (
+	storyPattern    = regexp.MustCompile(`instagram\.com/stories/([A-Za-z0-9._]+)(?:/(\d+))?`)
 	reelPattern     = regexp.MustCompile(`instagram\.com/reels?/([A-Za-z0-9_-]+)`)
 	postPattern     = regexp.MustCompile(`instagram\.com/p/([A-Za-z0-9_-]+)`)
 	ytWatchPattern  = regexp.MustCompile(`youtube\.com/watch\?v=([A-Za-z0-9_-]+)`)
@@ -135,6 +140,17 @@ var (
 )
 
 func parseURL(url string) (*ParsedURL, error) {
+	if m := storyPattern.FindStringSubmatch(url); len(m) > 1 {
+		parsed := &ParsedURL{
+			Username: m[1],
+			IsStory:  true,
+			Platform: "instagram",
+		}
+		if len(m) > 2 && m[2] != "" {
+			parsed.StoryID = m[2]
+		}
+		return parsed, nil
+	}
 	if m := reelPattern.FindStringSubmatch(url); len(m) > 1 {
 		return &ParsedURL{Shortcode: m[1], IsReel: true, Platform: "instagram"}, nil
 	}
@@ -309,6 +325,191 @@ func strVal(m map[string]interface{}, key string) string {
 	return ""
 }
 
+func stringifyID(v interface{}) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case float64:
+		return fmt.Sprintf("%.0f", t)
+	case json.Number:
+		return t.String()
+	default:
+		return ""
+	}
+}
+
+func instagramAPIRequest(method, apiURL, referer string, igCookies map[string]string) ([]byte, error) {
+	req, err := http.NewRequest(method, apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Cookie", buildCookieHeader(igCookies))
+	req.Header.Set("User-Agent", browserUA)
+	req.Header.Set("X-IG-App-ID", igAppID)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Origin", "https://www.instagram.com")
+	if referer != "" {
+		req.Header.Set("Referer", referer)
+	}
+	if csrf, ok := igCookies["csrftoken"]; ok {
+		req.Header.Set("X-CSRFToken", csrf)
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != 200 {
+		preview := string(body)
+		if len(preview) > 300 {
+			preview = preview[:300]
+		}
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, preview)
+	}
+
+	return body, nil
+}
+
+func fetchInstagramUserID(username string, igCookies map[string]string) (string, error) {
+	apiURL := fmt.Sprintf(
+		"https://www.instagram.com/web/search/topsearch/?query=%s",
+		url.QueryEscape(username),
+	)
+
+	body, err := instagramAPIRequest(
+		"GET",
+		apiURL,
+		fmt.Sprintf("https://www.instagram.com/stories/%s/", username),
+		igCookies,
+	)
+	if err != nil {
+		return "", fmt.Errorf("kullanıcı aranamadı: %w", err)
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return "", fmt.Errorf("kullanıcı yanıtı okunamadı: %w", err)
+	}
+
+	users, ok := raw["users"].([]interface{})
+	if !ok {
+		return "", fmt.Errorf("kullanıcı bulunamadı: %s", username)
+	}
+
+	target := strings.ToLower(username)
+	for _, entry := range users {
+		userMap, ok := entry.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		user, ok := userMap["user"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if strings.ToLower(strVal(user, "username")) != target {
+			continue
+		}
+		if id := stringifyID(user["pk"]); id != "" {
+			return id, nil
+		}
+		if id := stringifyID(user["id"]); id != "" {
+			return id, nil
+		}
+	}
+
+	return "", fmt.Errorf("kullanıcı bulunamadı: %s", username)
+}
+
+func storyItemPK(item map[string]interface{}) string {
+	if pk := stringifyID(item["pk"]); pk != "" {
+		return pk
+	}
+	id := strVal(item, "id")
+	if idx := strings.Index(id, "_"); idx > 0 {
+		return id[:idx]
+	}
+	return id
+}
+
+func parseStoryItems(reel map[string]interface{}, storyID string) ([]MediaItem, error) {
+	itemsRaw, ok := reel["items"].([]interface{})
+	if !ok || len(itemsRaw) == 0 {
+		return nil, fmt.Errorf("story bulunamadı veya süresi dolmuş")
+	}
+
+	var items []MediaItem
+	for _, raw := range itemsRaw {
+		item, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if storyID != "" {
+			pk := storyItemPK(item)
+			if pk != storyID && !strings.HasPrefix(strVal(item, "id"), storyID) {
+				continue
+			}
+		}
+
+		mediaType := int(toFloat(item, "media_type"))
+		switch mediaType {
+		case 2:
+			items = append(items, getBestVideo(item)...)
+		default:
+			items = append(items, getBestImage(item)...)
+		}
+	}
+
+	if len(items) == 0 {
+		if storyID != "" {
+			return nil, fmt.Errorf("story bulunamadı: %s", storyID)
+		}
+		return nil, fmt.Errorf("story bulunamadı veya süresi dolmuş")
+	}
+
+	return items, nil
+}
+
+func fetchUserStories(username, storyID string, igCookies map[string]string) ([]MediaItem, error) {
+	userID, err := fetchInstagramUserID(username, igCookies)
+	if err != nil {
+		return nil, err
+	}
+
+	apiURL := fmt.Sprintf("https://www.instagram.com/api/v1/feed/user/%s/story/", userID)
+	body, err := instagramAPIRequest(
+		"GET",
+		apiURL,
+		fmt.Sprintf("https://www.instagram.com/stories/%s/", username),
+		igCookies,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("story bilgisi alınamadı: %w", err)
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("story yanıtı okunamadı: %w", err)
+	}
+
+	reel, ok := raw["reel"].(map[string]interface{})
+	if !ok || reel == nil {
+		return nil, fmt.Errorf("story bulunamadı veya süresi dolmuş")
+	}
+
+	return parseStoryItems(reel, storyID)
+}
+
 func downloadFile(url, destPath string) (int64, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -443,7 +644,9 @@ func main() {
 	app := fiber.New(fiber.Config{BodyLimit: 10 * 1024 * 1024})
 	app.Use(logger.New())
 	app.Use(cors.New())
-	app.Static("/downloads", "./downloads")
+	app.Static("/downloads", "./downloads", fiber.Static{
+		ByteRange: true,
+	})
 
 	app.Get("/api/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -465,6 +668,63 @@ func main() {
 		parsed, err := parseURL(req.URL)
 		if err != nil {
 			return c.Status(400).JSON(DownloadResponse{Success: false, Error: err.Error()})
+		}
+
+		if parsed.IsStory {
+			outDir := filepath.Join(downloadDir, "story_"+parsed.Username)
+			if parsed.StoryID != "" {
+				outDir = filepath.Join(downloadDir, "story_"+parsed.Username+"_"+parsed.StoryID)
+			}
+			os.MkdirAll(outDir, 0755)
+
+			storyItems, err := fetchUserStories(parsed.Username, parsed.StoryID, igCookies)
+			if err != nil {
+				return c.Status(500).JSON(DownloadResponse{
+					Success: false, Error: err.Error(),
+				})
+			}
+
+			response := DownloadResponse{
+				Success:   true,
+				Shortcode: parsed.Username,
+				Username:  parsed.Username,
+				MediaType: "story",
+			}
+			if parsed.StoryID != "" {
+				response.Shortcode = parsed.StoryID
+			}
+
+			for i, item := range storyItems {
+				ext := filepath.Ext(strings.Split(item.URL, "?")[0])
+				if ext == "" {
+					if item.Type == "video" {
+						ext = ".mp4"
+					} else {
+						ext = ".jpg"
+					}
+				}
+
+				filename := fmt.Sprintf("%s_%d%s", response.Shortcode, i+1, ext)
+				destPath := filepath.Join(outDir, filename)
+
+				size, err := downloadFile(item.URL, destPath)
+				if err != nil {
+					return c.Status(500).JSON(DownloadResponse{
+						Success: false, Error: fmt.Sprintf("Story indirilemedi: %v", err),
+					})
+				}
+
+				response.Files = append(response.Files, DownloadedFile{
+					Filename: filename,
+					Path:     "/" + filepath.ToSlash(destPath),
+					Type:     item.Type,
+					Size:     size,
+					Width:    item.Width,
+					Height:   item.Height,
+				})
+			}
+
+			return c.JSON(response)
 		}
 
 		if parsed.Platform == "youtube" {
@@ -591,5 +851,9 @@ func main() {
 		Index: "index.html",
 	})
 
-	app.Listen(":" + port)
+	if err := app.Listen(":" + port); err != nil {
+		fmt.Fprintf(os.Stderr, "Sunucu başlatılamadı: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Port %s kullanımda olabilir. Çalışan süreci durdurun: fuser -k %s/tcp\n", port, port)
+		os.Exit(1)
+	}
 }

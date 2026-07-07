@@ -3,7 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -151,6 +155,103 @@ func TestParseURL_InstagramReel(t *testing.T) {
 	}
 }
 
+func TestParseURL_InstagramStory(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      string
+		username string
+		storyID  string
+	}{
+		{"basic", "https://www.instagram.com/stories/haleee_.m/", "haleee_.m", ""},
+		{"no trailing slash", "https://www.instagram.com/stories/haleee_.m", "haleee_.m", ""},
+		{"with story id", "https://www.instagram.com/stories/haleee_.m/1234567890/", "haleee_.m", "1234567890"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, err := parseURL(tt.url)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if parsed.Platform != "instagram" {
+				t.Errorf("platform = %q, want %q", parsed.Platform, "instagram")
+			}
+			if !parsed.IsStory {
+				t.Error("isStory = false, want true")
+			}
+			if parsed.Username != tt.username {
+				t.Errorf("username = %q, want %q", parsed.Username, tt.username)
+			}
+			if parsed.StoryID != tt.storyID {
+				t.Errorf("storyID = %q, want %q", parsed.StoryID, tt.storyID)
+			}
+		})
+	}
+}
+
+func TestParseStoryItems(t *testing.T) {
+	reel := map[string]interface{}{
+		"items": []interface{}{
+			map[string]interface{}{
+				"pk":         "3935990187228994714",
+				"media_type": float64(1),
+				"image_versions2": map[string]interface{}{
+					"candidates": []interface{}{
+						map[string]interface{}{
+							"url":    "https://cdn.example/741495341_18453157378136140_8825083769244252955_n.webp",
+							"width":  float64(1440),
+							"height": float64(2560),
+						},
+					},
+				},
+			},
+			map[string]interface{}{
+				"pk":         "3935990187228994715",
+				"media_type": float64(1),
+				"image_versions2": map[string]interface{}{
+					"candidates": []interface{}{
+						map[string]interface{}{
+							"url":    "https://cdn.example/733641915_18453157555136140_5876843432736789290_n.webp",
+							"width":  float64(1440),
+							"height": float64(2560),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("all stories", func(t *testing.T) {
+		items, err := parseStoryItems(reel, "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(items) != 2 {
+			t.Fatalf("items = %d, want 2", len(items))
+		}
+	})
+
+	t.Run("single story by id", func(t *testing.T) {
+		items, err := parseStoryItems(reel, "3935990187228994715")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(items) != 1 {
+			t.Fatalf("items = %d, want 1", len(items))
+		}
+		if !strings.Contains(items[0].URL, "733641915") {
+			t.Errorf("unexpected url: %s", items[0].URL)
+		}
+	})
+
+	t.Run("empty reel", func(t *testing.T) {
+		_, err := parseStoryItems(map[string]interface{}{"items": []interface{}{}}, "")
+		if err == nil {
+			t.Fatal("expected error for empty reel")
+		}
+	})
+}
+
 func TestParseURL_InvalidURLs(t *testing.T) {
 	tests := []struct {
 		name string
@@ -162,7 +263,6 @@ func TestParseURL_InvalidURLs(t *testing.T) {
 		{"youtube playlist", "https://www.youtube.com/playlist?list=PLxyz"},
 		{"youtube channel", "https://www.youtube.com/channel/UCabc"},
 		{"youtube home", "https://www.youtube.com/"},
-		{"instagram stories", "https://www.instagram.com/stories/username/123456"},
 		{"instagram profile", "https://www.instagram.com/username/"},
 		{"instagram explore", "https://www.instagram.com/explore/"},
 		{"plain domain", "https://www.google.com"},
@@ -217,6 +317,34 @@ func TestParseURL_PlatformDetection(t *testing.T) {
 		if parsed.Shortcode != tt.shortcode {
 			t.Errorf("url=%s: shortcode = %q, want %q", tt.url, parsed.Shortcode, tt.shortcode)
 		}
+	}
+}
+
+func TestDownloadsByteRange(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("0123456789abcdef")
+	if err := os.WriteFile(filepath.Join(dir, "sample.mp4"), content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	app := fiber.New()
+	app.Static("/downloads", dir, fiber.Static{ByteRange: true})
+
+	req := httptest.NewRequest("GET", "/downloads/sample.mp4", nil)
+	req.Header.Set("Range", "bytes=0-4")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if resp.StatusCode != 206 {
+		t.Fatalf("status = %d, want 206", resp.StatusCode)
+	}
+	if resp.Header.Get("Accept-Ranges") != "bytes" {
+		t.Errorf("Accept-Ranges = %q, want bytes", resp.Header.Get("Accept-Ranges"))
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "01234" {
+		t.Errorf("body = %q, want %q", body, "01234")
 	}
 }
 

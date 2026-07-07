@@ -36,6 +36,8 @@ function PreviewModal({ file, onClose }: { file: DownloadedFile; onClose: () => 
                         src={file.path}
                         controls
                         autoPlay
+                        preload="metadata"
+                        playsInline
                         className="max-w-full max-h-[85vh] rounded-xl ring-1 ring-surface-lighter"
                         data-testid="preview-video"
                     />
