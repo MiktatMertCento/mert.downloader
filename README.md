@@ -1,106 +1,91 @@
-# 📥 Insta Downloader
+# Mert Downloader
 
-Instagram ve YouTube içeriklerini en yüksek kalitede indiren Go API sunucusu.
+Instagram ve YouTube içeriklerini indiren Go API + React arayüzü. Docker ile tek container’da çalışır; amd64 ve arm64 (Raspberry Pi 5) destekler.
 
-## 📁 Proje Yapısı
+## Özellikler
 
-```
-cmd/server/                 # proses giriş noktası
-internal/
-  config/                   # env + sabitler
-  domain/                   # paylaşılan DTO / domain modelleri
-  mediaurl/                 # URL parse (IG + YouTube)
-  cookies/                  # Netscape cookie okuma
-  fetch/                    # HTTP indirme + yt-dlp + cleanup
-  instagram/                # Instagram API + parse
-  downloader/               # use-case orkestrasyonu
-  httpserver/               # ince Fiber HTTP katmanı
-  upscale/                  # 2x Real-ESRGAN job yöneticisi
-tools/upscale/              # ONNX export + inference
-web/                        # React frontend
-models/                     # runtime ONNX (Docker build üretir)
-downloads/                  # indirilen medya (gitignore)
-```
+- **Instagram:** post, carousel, reel, story, highlight, profil highlight cover’ları
+- **YouTube:** watch, Shorts, `youtu.be` — en yüksek kalite MP4 (`yt-dlp` + `ffmpeg`)
+- **Web UI:** tam ekran carousel önizleme, swipe / ok / nokta gezinme
+- **2x Netleştir:** RealESRGAN x2plus (ONNX) ile görsel upscale; progress + ETA; basılı tutarak eski/yeni karşılaştırma
+- **PWA:** ana ekrana ekle, Web Share Target ile uygulamaya link paylaş; `index.html` / SW no-cache (deploy sonrası hard refresh gerekmez)
+- **Otomatik temizlik:** `downloads/` altındaki klasörler ~5 dk sonra silinir
 
-## 🎯 Desteklenen Platformlar ve URL'ler
+## Desteklenen URL’ler
 
-| Platform | URL Formatı | İçerik |
+| Platform | Örnek | İçerik |
 |---|---|---|
 | Instagram | `instagram.com/p/<code>` | Fotoğraf, video, carousel |
 | Instagram | `instagram.com/reel/<code>` | Reels |
+| Instagram | `instagram.com/stories/<user>` veya `.../<user>/<id>` | Story |
+| Instagram | `instagram.com/stories/highlights/<id>` | Highlight |
+| Instagram | `instagram.com/<username>` | Profil highlight cover’ları |
 | YouTube | `youtube.com/watch?v=<id>` | Video |
 | YouTube | `youtube.com/shorts/<id>` | Shorts |
 | YouTube | `youtu.be/<id>` | Kısa link |
 
-## 📋 Gereksinimler
+## Gereksinimler
 
-- 🐳 **Docker** ve **Docker Compose**
-- 🍪 **cookies.txt** — Instagram indirmeleri için Netscape formatında cookie dosyası
+- Docker ve Docker Compose
+- `cookies.txt` — Instagram için Netscape formatında cookie dosyası (YouTube için gerekmez)
 
-## 🍪 Cookie Ayarı
+## Cookie ayarı
 
-Instagram indirmeleri için geçerli bir cookie dosyası gereklidir:
+1. [Get cookies.txt Locally](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) eklentisini kurun
+2. Instagram’a giriş yapın, cookie’leri export edin
+3. Dosyayı proje köküne `cookies.txt` olarak koyun
 
-1. Tarayıcınıza [Get cookies.txt](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) eklentisini kurun
-2. Instagram'a giriş yapın
-3. Eklentiyle cookie'leri export edin
-4. Dosyayı proje klasörüne `cookies.txt` olarak kaydedin
+Örnek format: `cookies.example.txt`. Dosya `.gitignore`’dadır; commit etmeyin.
 
-Örnek format için `cookies.example.txt` dosyasına bakın.
-
-> ⚠️ `cookies.txt` dosyası `.gitignore`'a eklenmiştir ve repo'ya dahil edilmez. Hassas bilgilerinizi paylaşmayın.
-
-## 🐳 Docker ile Çalıştırma
-
-### Hızlı Başlangıç (Docker Compose)
+## Çalıştırma
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
-Bu komut:
-- Frontend'i derler
-- RealESRGAN x2plus modelini ONNX'e çevirir (amd64/arm64)
-- Go uygulamasını derler ve test eder
-- `ffmpeg`, `yt-dlp` ve `onnxruntime` ile runtime image oluşturur
-- Sunucuyu `http://localhost:1905` adresinde başlatır
-
-> Image hem geliştirme makinesinde (x86_64) hem Raspberry Pi 5 (arm64) üzerinde `docker build` ile üretilebilir; aynı Dockerfile kullanılır.
-
-### Durdurma
+Bu komut frontend’i derler, RealESRGAN modelini ONNX’e çevirir, Go testlerini çalıştırır, `ffmpeg` / `yt-dlp` / `onnxruntime` ile image üretir ve `http://localhost:1905` üzerinde ayağa kaldırır.
 
 ```bash
 docker compose down
 ```
 
-### Manuel Docker Komutları
+Manuel:
 
 ```bash
-# Image oluştur
-docker build -t insta-downloader .
-
-# Container başlat
+docker build -t mert-downloader .
 docker run -d \
   -p 1905:1905 \
   -v ./cookies.txt:/app/cookies.txt:ro \
   -v ./downloads:/app/downloads \
-  --name insta-downloader \
-  insta-downloader
+  --name mert-downloader \
+  mert-downloader
 ```
 
-## 🧪 Testler
+Port: `PORT` env (varsayılan `1905`).
 
-```bash
-# Backend
-go test -count=1 ./...
+## Proje yapısı
 
-# Frontend
-cd web && pnpm test -- --run
+```
+cmd/server/                 # giriş noktası
+internal/
+  config/                   # env + sabitler
+  domain/                   # DTO / domain modelleri
+  mediaurl/                 # URL parse (IG + YouTube)
+  cookies/                  # Netscape cookie okuma
+  fetch/                    # HTTP indirme + yt-dlp + cleanup
+  instagram/                # Instagram API / parse
+  downloader/               # use-case orkestrasyonu
+  httpserver/               # Fiber HTTP katmanı (API + static + SPA)
+  upscale/                  # 2x Real-ESRGAN job yöneticisi
+tools/upscale/              # ONNX export + inference
+web/                        # React (Vite) + PWA
+models/                     # runtime ONNX (Docker build üretir)
+downloads/                  # indirilen medya (gitignore)
 ```
 
-## 📡 API Kullanımı
+## API
 
-### Sağlık Kontrolü
+### Sağlık
 
 ```bash
 curl http://localhost:1905/api/health
@@ -114,17 +99,58 @@ curl http://localhost:1905/api/health
 }
 ```
 
-### ✨ 2x Netleştir / Upscale
-
-Önizlemede açık olan görsel için UI'daki **2x Netleştir** butonu kullanılır. API:
+### İndirme
 
 ```bash
-# Job başlat
+curl -X POST http://localhost:1905/api/download \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://www.instagram.com/p/ABC123xyz/"}'
+```
+
+Aynı endpoint story / highlight / reel / YouTube URL’leriyle de çalışır.
+
+Başarılı yanıt:
+
+```json
+{
+  "success": true,
+  "shortcode": "ABC123xyz",
+  "media_type": "carousel",
+  "username": "ornek",
+  "caption": "...",
+  "files": [
+    {
+      "filename": "ABC123xyz_1.jpg",
+      "path": "/downloads/ABC123xyz/ABC123xyz_1.jpg",
+      "type": "image",
+      "size": 123456,
+      "width": 1080,
+      "height": 1350
+    }
+  ]
+}
+```
+
+Hata:
+
+```json
+{
+  "success": false,
+  "error": "desteklenmeyen URL formatı"
+}
+```
+
+Dosyalar `GET /downloads/...` üzerinden sunulur (byte-range destekli).
+
+### 2x Netleştir
+
+UI’daki **2x Netleştir** butonu veya:
+
+```bash
 curl -X POST http://localhost:1905/api/upscale \
   -H "Content-Type: application/json" \
   -d '{"path":"/downloads/ABC123/photo.jpg"}'
 
-# Durum / kalan süre
 curl http://localhost:1905/api/upscale/<job-id>
 ```
 
@@ -138,102 +164,39 @@ curl http://localhost:1905/api/upscale/<job-id>
 }
 ```
 
-Model: resmi **RealESRGAN_x2plus** (kaliteli genel fotoğraf 2x). İşlem tile tabanlıdır; Pi 5'te tipik IG gönderileri genelde 1–2 dk içinde biter.
+Model: **RealESRGAN_x2plus** (tile tabanlı). Pi 5’te tipik IG görselleri genelde 1–2 dk.
 
-### 📷 Instagram Post İndirme
+Upscale env (Docker varsayılanları):
 
-```bash
-curl -X POST http://localhost:1905/api/download \
-  -H "Content-Type: application/json" \
-  -d '{"url":"https://www.instagram.com/p/ABC123xyz/"}'
-```
+| Değişken | Anlamı |
+|---|---|
+| `UPSCALE_PYTHON` | Python binary |
+| `UPSCALE_SCRIPT` | `tools/upscale/upscale.py` |
+| `UPSCALE_MODEL` | ONNX model yolu |
+| `UPSCALE_TILE` | Tile boyutu (varsayılan 128) |
+| `UPSCALE_THREADS` | Thread sayısı |
 
-### 🎞️ Instagram Reel İndirme
-
-```bash
-curl -X POST http://localhost:1905/api/download \
-  -H "Content-Type: application/json" \
-  -d '{"url":"https://www.instagram.com/reel/XYZ789abc/"}'
-```
-
-### 🎬 YouTube Video İndirme
+## Testler
 
 ```bash
-curl -X POST http://localhost:1905/api/download \
-  -H "Content-Type: application/json" \
-  -d '{"url":"https://www.youtube.com/watch?v=Ma6mYcG4STw"}'
+go test -count=1 ./...
+
+cd web && pnpm test -- --run
 ```
 
-### 📱 YouTube Shorts İndirme
+Docker build sırasında Go testleri otomatik çalışır; başarısızsa image üretilmez.
 
-```bash
-curl -X POST http://localhost:1905/api/download \
-  -H "Content-Type: application/json" \
-  -d '{"url":"https://www.youtube.com/shorts/ogGoZuJtG84"}'
-```
+## CI/CD
 
-### 🔗 YouTube Kısa Link
+GitHub Actions (`.github/workflows/ci.yml`):
 
-```bash
-curl -X POST http://localhost:1905/api/download \
-  -H "Content-Type: application/json" \
-  -d '{"url":"https://youtu.be/Ma6mYcG4STw"}'
-```
+- PR’larda Go + frontend testleri
+- `main`’e merge’de image `ghcr.io`’ya push
+- Branch adı `v*` ise versiyon tag’i + GitHub Release
 
-### ✅ Başarılı Yanıt Örneği
+## Notlar
 
-```json
-{
-  "success": true,
-  "shortcode": "Ma6mYcG4STw",
-  "media_type": "video",
-  "username": "",
-  "files": [
-    {
-      "filename": "Ma6mYcG4STw.mp4",
-      "path": "/downloads/Ma6mYcG4STw/Ma6mYcG4STw.mp4",
-      "type": "video",
-      "size": 15234567
-    }
-  ]
-}
-```
-
-### ❌ Hata Yanıtı Örneği
-
-```json
-{
-  "success": false,
-  "error": "desteklenmeyen URL formatı"
-}
-```
-
-## 📁 Proje Yapısı
-
-```
-insta-downloader/
-├── main.go              # Ana uygulama kodu
-├── main_test.go         # Unit testler
-├── Dockerfile           # Multi-stage Docker build (test + build + runtime)
-├── docker-compose.yml   # Docker Compose yapılandırması
-├── .github/workflows/
-│   └── ci.yml           # GitHub Actions CI/CD
-├── .dockerignore        # Docker build context filtresi
-├── .gitignore           # Git ignore kuralları
-├── cookies.txt          # Instagram cookie dosyası (gitignore)
-├── cookies.example.txt  # Örnek cookie formatı
-├── go.mod
-├── go.sum
-└── downloads/           # İndirilen dosyalar
-    ├── <shortcode>/     # Her içerik kendi klasöründe
-    └── ...
-```
-
-## 📌 Notlar
-
-- 🔒 `cookies.txt` hassas bilgi içerir, `.gitignore` ile repo dışında tutulur. Örnek format için `cookies.example.txt` dosyasını inceleyin.
-- 🧪 Docker build sırasında tüm unit testler otomatik çalışır — testler başarısız olursa image oluşturulmaz.
-- 🎵 `ffmpeg` ve `yt-dlp` Docker container içinde en güncel sürümleriyle otomatik yüklenir.
-- 📦 İndirilen dosyalar `downloads/<id>/` klasörüne kaydedilir ve `/downloads/...` endpoint'i üzerinden erişilebilir.
-- 🎥 Videolar her zaman en yüksek kalitede MP4 formatında indirilir.
-- 🚀 GitHub Actions ile her push'ta testler çalışır. `v*` tag'i push edildiğinde Docker image `ghcr.io`'ya yüklenir ve GitHub Release oluşturulur.
+- Instagram indirmeleri için geçerli `cookies.txt` gerekir; süresi dolunca yenileyin
+- SPA shell (`/`, `index.html`) ve service worker no-cache; hashed `/assets/*` uzun cache
+- Videolar mümkün olan en yüksek kalitede MP4 olarak birleştirilir
+- Sadece kişisel kullanım içindir
