@@ -21,14 +21,14 @@ export function getPreviewMediaClass(
     }
 
     if (small) {
-        return `${shared} w-[min(72vw,28rem)] h-[min(72vw,28rem)] max-w-[90vw] max-h-[85vh] ring-1 ring-surface-lighter bg-surface-light/50`
+        return `${shared} w-[min(72vw,28rem)] h-[min(72vw,28rem)] max-w-[90vw] max-h-[min(85dvh,100%)] ring-1 ring-surface-lighter bg-surface-light/50`
     }
 
     if (file.type === 'video') {
-        return `${shared} max-w-full max-h-[85vh] w-full ring-1 ring-surface-lighter bg-black`
+        return `${shared} max-w-full max-h-[min(85dvh,100%)] w-full ring-1 ring-surface-lighter bg-black`
     }
 
-    return `${shared} max-w-full max-h-[85vh] w-full ring-1 ring-surface-lighter bg-surface-light/50`
+    return `${shared} max-w-full max-h-[min(85dvh,100%)] w-full ring-1 ring-surface-lighter bg-surface-light/50`
 }
 
 export function applyMobileVideoAttributes(video: HTMLVideoElement) {
