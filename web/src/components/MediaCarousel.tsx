@@ -96,7 +96,15 @@ export default function MediaCarousel({
 
     useEffect(() => {
         setIndex(initialIndex)
-    }, [initialIndex, files])
+    }, [initialIndex])
+
+    useEffect(() => {
+        if (files.length === 0) return
+        if (index < files.length) return
+        const next = files.length - 1
+        setIndex(next)
+        onIndexChange?.(next)
+    }, [files.length, index, onIndexChange])
 
     useEffect(() => {
         const cache = cacheRef.current
@@ -153,9 +161,9 @@ export default function MediaCarousel({
     const hasNext = index < files.length - 1
 
     return (
-        <div ref={rootRef} className={`relative ${className}`} data-testid="media-carousel">
+        <div ref={rootRef} className={`relative flex flex-col w-full max-w-full min-w-0 min-h-0 ${className}`} data-testid="media-carousel">
             <div
-                className="relative overflow-hidden rounded-xl"
+                className="relative overflow-hidden rounded-xl w-full min-w-0 min-h-0 flex-1 flex items-center justify-center"
                 onTouchStart={onTouchStart}
                 onTouchMove={onTouchMove}
                 onTouchEnd={onTouchEnd}
@@ -163,13 +171,13 @@ export default function MediaCarousel({
                 style={{ touchAction: 'pan-y' }}
             >
                 <div
-                    className="flex transition-transform duration-300 ease-out"
+                    className="flex transition-transform duration-300 ease-out w-full"
                     style={{ transform: `translateX(-${index * 100}%)` }}
                 >
                     {files.map((file, slideIndex) => (
                         <div
                             key={`${file.path}-${slideIndex}`}
-                            className="w-full shrink-0 flex items-center justify-center px-1"
+                            className="w-full min-w-full shrink-0 flex items-center justify-center px-1"
                             aria-hidden={slideIndex !== index}
                         >
                             <CarouselSlide
@@ -218,23 +226,21 @@ export default function MediaCarousel({
             </div>
 
             {files.length > 1 && (
-                <div
-                    className={
-                        variant === 'fullscreen'
-                            ? 'absolute -bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-2'
-                            : 'mt-3 flex items-center justify-center gap-2'
-                    }
-                >
-                    <span className="text-xs text-text-muted font-medium" aria-live="polite" data-testid="carousel-counter">
+                <div className="mt-3 shrink-0 flex items-center justify-center gap-3 px-2">
+                    <span
+                        className="text-xs text-text-muted font-medium whitespace-nowrap tabular-nums shrink-0"
+                        aria-live="polite"
+                        data-testid="carousel-counter"
+                    >
                         {index + 1} / {files.length}
                     </span>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 overflow-x-auto max-w-[min(70vw,18rem)] py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                         {files.map((file, dotIndex) => (
                             <button
                                 key={`${file.path}-dot-${dotIndex}`}
                                 type="button"
                                 onClick={() => goTo(dotIndex)}
-                                className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                                className={`h-1.5 rounded-full transition-all cursor-pointer shrink-0 ${
                                     dotIndex === index ? 'w-5 bg-primary-light' : 'w-1.5 bg-surface-lighter hover:bg-primary/40'
                                 }`}
                                 aria-label={`${dotIndex + 1}. medyaya git`}

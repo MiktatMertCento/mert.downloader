@@ -1,10 +1,24 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import DownloadResult from './DownloadResult'
 import MediaCarousel from './MediaCarousel'
 import { formatSize, getMediaTypeLabel } from '../lib/utils'
 import type { DownloadResponse } from '../lib/api'
+
+vi.mock('../lib/api', async () => {
+    const actual = await vi.importActual<typeof import('../lib/api')>('../lib/api')
+    return {
+        ...actual,
+        startUpscale: vi.fn(),
+        waitForUpscale: vi.fn(),
+    }
+})
+
+import { startUpscale, waitForUpscale } from '../lib/api'
+
+const mockedStartUpscale = vi.mocked(startUpscale)
+const mockedWaitForUpscale = vi.mocked(waitForUpscale)
 
 describe('formatSize', () => {
     it('formats bytes', () => {
@@ -36,6 +50,10 @@ describe('getMediaTypeLabel', () => {
 })
 
 describe('DownloadResult', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+    })
+
     it('renders nothing when no data and no error', () => {
         const { container } = render(<DownloadResult data={null} error={null} />)
         expect(container.firstChild).toBeNull()
@@ -176,7 +194,136 @@ describe('DownloadResult', () => {
         expect(video).toHaveAttribute('controls')
         expect(video).toHaveAttribute('preload', 'auto')
     })
+
+    it('enhances the open image with progress and ETA', async () => {
+        const user = userEvent.setup()
+        const data: DownloadResponse = {
+            success: true,
+            shortcode: 'IMG',
+            media_type: 'image',
+            username: 'user',
+            files: [{ filename: 'photo.jpg', path: '/downloads/IMG/photo.jpg', type: 'image', size: 1024, width: 540, height: 540 }],
+        }
+
+        mockedStartUpscale.mockResolvedValue({
+            id: 'job-1',
+            status: 'queued',
+            source_path: '/downloads/IMG/photo.jpg',
+            percent: 0,
+            eta_seconds: 20,
+            elapsed_seconds: 0,
+        })
+        mockedWaitForUpscale.mockImplementation(async (_id, onUpdate) => {
+            onUpdate?.({
+                id: 'job-1',
+                status: 'running',
+                source_path: '/downloads/IMG/photo.jpg',
+                percent: 55,
+                eta_seconds: 9,
+                elapsed_seconds: 4,
+            })
+            await new Promise((resolve) => setTimeout(resolve, 30))
+            return {
+                id: 'job-1',
+                status: 'completed',
+                source_path: '/downloads/IMG/photo.jpg',
+                result_path: '/downloads/IMG/photo_upscaled_x2.png',
+                filename: 'photo_upscaled_x2.png',
+                percent: 100,
+                eta_seconds: 0,
+                elapsed_seconds: 8,
+                width: 1080,
+                height: 1080,
+                size: 4096,
+            }
+        })
+
+        render(<DownloadResult data={data} error={null} />)
+        await user.click(screen.getByLabelText('Önizle'))
+        expect(screen.getByTestId('enhance-button')).toBeInTheDocument()
+        await user.click(screen.getByTestId('enhance-button'))
+
+        await waitFor(() => {
+            expect(screen.getByTestId('upscale-progress')).toBeInTheDocument()
+            expect(screen.getByTestId('upscale-eta')).toHaveTextContent('Kalan süre ~9 sn')
+        })
+
+        await waitFor(() => {
+            expect(screen.getByTestId('preview-image')).toHaveAttribute('src', '/downloads/IMG/photo_upscaled_x2.png')
+        })
+        expect(mockedStartUpscale).toHaveBeenCalledWith('/downloads/IMG/photo.jpg')
+
+        const compare = await screen.findByTestId('compare-button')
+        expect(screen.getByTestId('compare-hint')).toHaveTextContent('basılı tut')
+        expect(screen.getByTestId('preview-image')).toHaveAttribute('src', '/downloads/IMG/photo_upscaled_x2.png')
+
+        fireEvent.pointerDown(compare)
+        expect(screen.getByTestId('preview-image')).toHaveAttribute('src', '/downloads/IMG/photo.jpg')
+        expect(screen.getByTestId('compare-hint')).toHaveTextContent('Eski hali gösteriliyor')
+        expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+        fireEvent.pointerUp(compare)
+        fireEvent.click(compare)
+        expect(screen.getByRole('dialog')).toBeInTheDocument()
+        expect(screen.getByTestId('preview-image')).toHaveAttribute('src', '/downloads/IMG/photo_upscaled_x2.png')
+    })
+
+    it('keeps the current carousel page after enhance succeeds', async () => {
+        const user = userEvent.setup()
+        const data: DownloadResponse = {
+            success: true,
+            shortcode: 'CAR',
+            media_type: 'carousel',
+            username: 'user',
+            files: [
+                { filename: 'a.jpg', path: '/downloads/CAR/a.jpg', type: 'image', size: 1024 },
+                { filename: 'b.jpg', path: '/downloads/CAR/b.jpg', type: 'image', size: 1024 },
+                { filename: 'c.jpg', path: '/downloads/CAR/c.jpg', type: 'image', size: 1024 },
+            ],
+        }
+
+        mockedStartUpscale.mockResolvedValue({
+            id: 'job-2',
+            status: 'queued',
+            source_path: '/downloads/CAR/c.jpg',
+            percent: 0,
+            eta_seconds: 10,
+            elapsed_seconds: 0,
+        })
+        mockedWaitForUpscale.mockResolvedValue({
+            id: 'job-2',
+            status: 'completed',
+            source_path: '/downloads/CAR/c.jpg',
+            result_path: '/downloads/CAR/c_upscaled_x2.png',
+            filename: 'c_upscaled_x2.png',
+            percent: 100,
+            eta_seconds: 0,
+            elapsed_seconds: 5,
+            width: 200,
+            height: 200,
+            size: 2048,
+        })
+
+        render(<DownloadResult data={data} error={null} />)
+        await user.click(screen.getAllByLabelText('Önizle')[0])
+        await user.click(screen.getByTestId('carousel-next'))
+        await user.click(screen.getByTestId('carousel-next'))
+        expect(screen.getByTestId('carousel-counter')).toHaveTextContent('3 / 3')
+
+        await user.click(screen.getByTestId('enhance-button'))
+
+        await waitFor(() => {
+            expect(screen.getByTestId('carousel-active-image')).toHaveAttribute(
+                'src',
+                '/downloads/CAR/c_upscaled_x2.png',
+            )
+        })
+        expect(screen.getByTestId('carousel-counter')).toHaveTextContent('3 / 3')
+        expect(mockedStartUpscale).toHaveBeenCalledWith('/downloads/CAR/c.jpg')
+    })
 })
+
+
 
 describe('MediaCarousel', () => {
     const files = [

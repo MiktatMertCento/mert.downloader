@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractSharedUrl, getPreviewMediaClass, isSmallPreviewMedia } from './utils'
+import { extractSharedUrl, formatEta, getPreviewMediaClass, isSmallPreviewMedia } from './utils'
 
 describe('extractSharedUrl', () => {
     it('extracts url from share target url param', () => {
@@ -28,6 +28,20 @@ describe('extractSharedUrl', () => {
         expect(extractSharedUrl(null, 'Bak: https://www.instagram.com/p/ABC123/.', null)).toBe(
             'https://www.instagram.com/p/ABC123/',
         )
+    })
+})
+
+describe('formatEta', () => {
+    it('formats seconds', () => {
+        expect(formatEta(12)).toBe('~12 sn')
+    })
+
+    it('formats minutes and seconds', () => {
+        expect(formatEta(75)).toBe('~1 dk 15 sn')
+    })
+
+    it('formats whole minutes', () => {
+        expect(formatEta(120)).toBe('~2 dk')
     })
 })
 
