@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import DownloadForm from './components/DownloadForm'
 import DownloadResult from './components/DownloadResult'
 import { downloadMedia, checkHealth, type DownloadResponse } from './lib/api'
+import { extractSharedUrl } from './lib/utils'
 
 export default function App() {
   const [url, setUrl] = useState('')
@@ -10,42 +11,41 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking')
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const title = params.get('title')
-    const text = params.get('text')
-    const urlParam = params.get('url')
-
-    if (title || text || urlParam) {
-      const combined = [title, text, urlParam].filter(Boolean).join(' ')
-      const match = combined.match(/https?:\/\/[^\s]+/i)
-      if (match) {
-        setUrl(match[0])
-      }
-      window.history.replaceState({}, '', window.location.pathname)
-    }
-  }, [])
-
-  useEffect(() => {
-    checkHealth()
-      .then(() => setServerStatus('online'))
-      .catch(() => setServerStatus('offline'))
-  }, [])
-
-  const handleSubmit = async (url: string) => {
+  const handleSubmit = useCallback(async (submitUrl: string) => {
     setIsLoading(true)
     setResult(null)
     setError(null)
 
     try {
-      const data = await downloadMedia(url)
+      const data = await downloadMedia(submitUrl)
       setResult(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bilinmeyen hata')
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const sharedUrl = extractSharedUrl(
+      params.get('title'),
+      params.get('text'),
+      params.get('url'),
+    )
+
+    if (!sharedUrl) return
+
+    window.history.replaceState({}, '', window.location.pathname)
+    setUrl(sharedUrl)
+    void handleSubmit(sharedUrl)
+  }, [handleSubmit])
+
+  useEffect(() => {
+    checkHealth()
+      .then(() => setServerStatus('online'))
+      .catch(() => setServerStatus('offline'))
+  }, [])
 
   return (
     <div className="min-h-dvh flex flex-col">

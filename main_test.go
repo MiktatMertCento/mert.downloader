@@ -155,6 +155,60 @@ func TestParseURL_InstagramReel(t *testing.T) {
 	}
 }
 
+func TestParseURL_InstagramHighlight(t *testing.T) {
+	tests := []struct {
+		name        string
+		url         string
+		highlightID string
+	}{
+		{"basic", "https://www.instagram.com/stories/highlights/17849176446661385/", "17849176446661385"},
+		{"no trailing slash", "https://www.instagram.com/stories/highlights/17849176446661385", "17849176446661385"},
+		{"with query", "https://www.instagram.com/stories/highlights/17849176446661385/?utm_source=ig", "17849176446661385"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, err := parseURL(tt.url)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !parsed.IsHighlight {
+				t.Fatal("isHighlight = false, want true")
+			}
+			if parsed.HighlightID != tt.highlightID {
+				t.Errorf("highlightID = %q, want %q", parsed.HighlightID, tt.highlightID)
+			}
+		})
+	}
+}
+
+func TestParseURL_InstagramProfile(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      string
+		username string
+	}{
+		{"basic", "https://www.instagram.com/miktatmertcento/", "miktatmertcento"},
+		{"no trailing slash", "https://www.instagram.com/miktatmertcento", "miktatmertcento"},
+		{"with query", "https://www.instagram.com/test.user/?hl=tr", "test.user"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, err := parseURL(tt.url)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !parsed.IsProfile {
+				t.Fatal("isProfile = false, want true")
+			}
+			if parsed.Username != tt.username {
+				t.Errorf("username = %q, want %q", parsed.Username, tt.username)
+			}
+		})
+	}
+}
+
 func TestParseURL_InstagramStory(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -162,9 +216,9 @@ func TestParseURL_InstagramStory(t *testing.T) {
 		username string
 		storyID  string
 	}{
-		{"basic", "https://www.instagram.com/stories/haleee_.m/", "haleee_.m", ""},
-		{"no trailing slash", "https://www.instagram.com/stories/haleee_.m", "haleee_.m", ""},
-		{"with story id", "https://www.instagram.com/stories/haleee_.m/1234567890/", "haleee_.m", "1234567890"},
+		{"basic", "https://www.instagram.com/stories/miktatmertcento/", "miktatmertcento", ""},
+		{"no trailing slash", "https://www.instagram.com/stories/miktatmertcento", "miktatmertcento", ""},
+		{"with story id", "https://www.instagram.com/stories/miktatmertcento/1234567890/", "miktatmertcento", "1234567890"},
 	}
 
 	for _, tt := range tests {
@@ -186,6 +240,205 @@ func TestParseURL_InstagramStory(t *testing.T) {
 				t.Errorf("storyID = %q, want %q", parsed.StoryID, tt.storyID)
 			}
 		})
+	}
+}
+
+func TestNormalizeShortcode(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"DLUWShcs4b6", "DLUWShcs4b6"},
+		{"DaqUlZUCOrtLLY6V5V895aXAoI35s3Im9RjhLY0", "DaqUlZUCOrt"},
+		{"CCQQsCXjOaB", "CCQQsCXjOaB"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := normalizeShortcode(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizeShortcode(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShortcodeToMediaID(t *testing.T) {
+	tests := []struct {
+		shortcode string
+		want      string
+	}{
+		{"DLUWShcs4b6", "3662650426847889146"},
+		{"B8KjT5QHq1x", "2236755463714549105"},
+		{"DaqUlZUCOrtLLY6V5V895aXAoI35s3Im9RjhLY0", "3939051354819455725"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.shortcode, func(t *testing.T) {
+			got := shortcodeToMediaID(tt.shortcode)
+			if got != tt.want {
+				t.Errorf("shortcodeToMediaID(%q) = %q, want %q", tt.shortcode, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMediaInfoEndpoints(t *testing.T) {
+	endpoints := mediaInfoEndpoints("12345")
+	if len(endpoints) != 2 {
+		t.Fatalf("endpoints = %d, want 2", len(endpoints))
+	}
+	if !strings.HasPrefix(endpoints[0], "https://www.instagram.com/api/v1/media/") {
+		t.Errorf("primary endpoint = %q, want www.instagram.com", endpoints[0])
+	}
+	if !strings.HasSuffix(endpoints[0], "/12345/info/") {
+		t.Errorf("primary endpoint = %q", endpoints[0])
+	}
+	if !strings.HasPrefix(endpoints[1], "https://i.instagram.com/api/v1/media/") {
+		t.Errorf("fallback endpoint = %q, want i.instagram.com", endpoints[1])
+	}
+}
+
+func TestParseAPIItem(t *testing.T) {
+	t.Run("image post", func(t *testing.T) {
+		item := map[string]interface{}{
+			"media_type": float64(1),
+			"user":       map[string]interface{}{"username": "private_user"},
+			"caption":    map[string]interface{}{"text": "test caption"},
+			"image_versions2": map[string]interface{}{
+				"candidates": []interface{}{
+					map[string]interface{}{
+						"url":    "https://cdn.example/image.jpg",
+						"width":  float64(1080),
+						"height": float64(1350),
+					},
+				},
+			},
+		}
+
+		info, err := parseAPIItem(item, "ABC123")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if info.MediaType != "image" {
+			t.Errorf("mediaType = %q, want image", info.MediaType)
+		}
+		if info.Username != "private_user" {
+			t.Errorf("username = %q, want private_user", info.Username)
+		}
+		if len(info.Items) != 1 || info.Items[0].Type != "image" {
+			t.Errorf("unexpected items: %+v", info.Items)
+		}
+	})
+
+	t.Run("carousel post", func(t *testing.T) {
+		item := map[string]interface{}{
+			"media_type": float64(8),
+			"carousel_media": []interface{}{
+				map[string]interface{}{
+					"media_type": float64(1),
+					"image_versions2": map[string]interface{}{
+						"candidates": []interface{}{
+							map[string]interface{}{"url": "https://cdn.example/1.jpg", "width": float64(1080), "height": float64(1080)},
+						},
+					},
+				},
+				map[string]interface{}{
+					"media_type": float64(2),
+					"video_versions": []interface{}{
+						map[string]interface{}{"url": "https://cdn.example/2.mp4", "width": float64(720), "height": float64(1280)},
+					},
+				},
+			},
+		}
+
+		info, err := parseAPIItem(item, "CAR123")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if info.MediaType != "carousel" {
+			t.Errorf("mediaType = %q, want carousel", info.MediaType)
+		}
+		if len(info.Items) != 2 {
+			t.Fatalf("items = %d, want 2", len(info.Items))
+		}
+	})
+}
+
+func TestParseHighlightCover(t *testing.T) {
+	highlight := map[string]interface{}{
+		"id":    "highlight:17849176446661385",
+		"title": "G'",
+		"cover_media": map[string]interface{}{
+			"full_image_version": map[string]interface{}{
+				"url":    "https://cdn.example/full.jpg",
+				"width":  float64(1080),
+				"height": float64(1920),
+			},
+			"cropped_image_version": map[string]interface{}{
+				"url":    "https://cdn.example/thumb.jpg",
+				"width":  float64(150),
+				"height": float64(150),
+			},
+		},
+	}
+
+	cover, err := parseHighlightCover(highlight)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cover.Title != "G'" {
+		t.Errorf("title = %q, want G'", cover.Title)
+	}
+	if cover.Item.URL != "https://cdn.example/full.jpg" {
+		t.Errorf("url = %q, want full image", cover.Item.URL)
+	}
+	if cover.Item.Width != 1080 {
+		t.Errorf("width = %d, want 1080", cover.Item.Width)
+	}
+}
+
+func TestSanitizeFilenamePart(t *testing.T) {
+	if got := sanitizeFilenamePart("G'"); got != "G" {
+		t.Errorf("sanitizeFilenamePart(\"G'\") = %q, want G", got)
+	}
+	if got := sanitizeFilenamePart(":)"); got != "highlight" {
+		t.Errorf("sanitizeFilenamePart(\":)\") = %q, want highlight", got)
+	}
+}
+
+func TestEnsureHighlightReelID(t *testing.T) {
+	if got := ensureHighlightReelID("17849176446661385"); got != "highlight:17849176446661385" {
+		t.Errorf("got %q", got)
+	}
+	if got := ensureHighlightReelID("highlight:17849176446661385"); got != "highlight:17849176446661385" {
+		t.Errorf("got %q", got)
+	}
+	if got := highlightNumericID("highlight:17849176446661385"); got != "17849176446661385" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestGetBestImagePicksHighestResolution(t *testing.T) {
+	item := map[string]interface{}{
+		"image_versions2": map[string]interface{}{
+			"candidates": []interface{}{
+				map[string]interface{}{"url": "https://cdn.example/small.jpg", "width": float64(150), "height": float64(150)},
+				map[string]interface{}{"url": "https://cdn.example/large.jpg", "width": float64(1290), "height": float64(2293)},
+				map[string]interface{}{"url": "https://cdn.example/medium.jpg", "width": float64(640), "height": float64(1136)},
+			},
+		},
+	}
+
+	got := getBestImage(item)
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].URL != "https://cdn.example/large.jpg" {
+		t.Errorf("url = %q, want large.jpg", got[0].URL)
+	}
+	if got[0].Width != 1290 || got[0].Height != 2293 {
+		t.Errorf("size = %dx%d, want 1290x2293", got[0].Width, got[0].Height)
 	}
 }
 
@@ -263,7 +516,6 @@ func TestParseURL_InvalidURLs(t *testing.T) {
 		{"youtube playlist", "https://www.youtube.com/playlist?list=PLxyz"},
 		{"youtube channel", "https://www.youtube.com/channel/UCabc"},
 		{"youtube home", "https://www.youtube.com/"},
-		{"instagram profile", "https://www.instagram.com/username/"},
 		{"instagram explore", "https://www.instagram.com/explore/"},
 		{"plain domain", "https://www.google.com"},
 	}
