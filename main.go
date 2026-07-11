@@ -36,13 +36,22 @@ type NetscapeCookie struct {
 }
 
 type ParsedURL struct {
-	Shortcode string
-	IsReel    bool
-	IsStory   bool
-	Username  string
-	StoryID   string
-	Platform  string
-	VideoID   string
+	Shortcode  string
+	IsReel     bool
+	IsStory      bool
+	IsProfile    bool
+	IsHighlight  bool
+	Username     string
+	StoryID      string
+	HighlightID  string
+	Platform   string
+	VideoID    string
+}
+
+type HighlightCover struct {
+	Title string
+	ID    string
+	Item  MediaItem
 }
 
 type MediaItem struct {
@@ -131,15 +140,32 @@ func buildCookieHeader(igCookies map[string]string) string {
 }
 
 var (
-	storyPattern    = regexp.MustCompile(`instagram\.com/stories/([A-Za-z0-9._]+)(?:/(\d+))?`)
+	storyPattern      = regexp.MustCompile(`instagram\.com/stories/([A-Za-z0-9._]+)(?:/(\d+))?`)
+	highlightPattern  = regexp.MustCompile(`instagram\.com/stories/highlights/(\d+)`)
 	reelPattern     = regexp.MustCompile(`instagram\.com/reels?/([A-Za-z0-9_-]+)`)
 	postPattern     = regexp.MustCompile(`instagram\.com/p/([A-Za-z0-9_-]+)`)
+	profilePattern  = regexp.MustCompile(`instagram\.com/([A-Za-z0-9._]+)(?:/)?(?:\?|#|$)`)
 	ytWatchPattern  = regexp.MustCompile(`youtube\.com/watch\?v=([A-Za-z0-9_-]+)`)
 	ytShortsPattern = regexp.MustCompile(`youtube\.com/shorts/([A-Za-z0-9_-]+)`)
 	ytShortPattern  = regexp.MustCompile(`youtu\.be/([A-Za-z0-9_-]+)`)
+	reservedIGPaths = map[string]struct{}{
+		"p": {}, "reel": {}, "reels": {}, "stories": {}, "explore": {}, "accounts": {},
+		"direct": {}, "tv": {}, "legal": {}, "about": {}, "developer": {}, "privacy": {},
+		"terms": {}, "session": {}, "login": {}, "directory": {}, "api": {}, "graphql": {},
+		"challenge": {}, "username": {}, "oauth": {}, "help": {}, "emails": {}, "locations": {},
+		"tags": {}, "nametag": {}, "archive": {}, "web": {}, "static": {},
+	}
+	filenameSanitizer = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 )
 
 func parseURL(url string) (*ParsedURL, error) {
+	if m := highlightPattern.FindStringSubmatch(url); len(m) > 1 {
+		return &ParsedURL{
+			HighlightID: m[1],
+			IsHighlight: true,
+			Platform:    "instagram",
+		}, nil
+	}
 	if m := storyPattern.FindStringSubmatch(url); len(m) > 1 {
 		parsed := &ParsedURL{
 			Username: m[1],
@@ -166,10 +192,24 @@ func parseURL(url string) (*ParsedURL, error) {
 	if m := ytShortPattern.FindStringSubmatch(url); len(m) > 1 {
 		return &ParsedURL{VideoID: m[1], Platform: "youtube"}, nil
 	}
+	if m := profilePattern.FindStringSubmatch(url); len(m) > 1 {
+		username := m[1]
+		if _, reserved := reservedIGPaths[strings.ToLower(username)]; !reserved {
+			return &ParsedURL{Username: username, IsProfile: true, Platform: "instagram"}, nil
+		}
+	}
 	return nil, fmt.Errorf("desteklenmeyen URL formatı")
 }
 
+func normalizeShortcode(shortcode string) string {
+	if len(shortcode) > 11 {
+		return shortcode[:11]
+	}
+	return shortcode
+}
+
 func shortcodeToMediaID(shortcode string) string {
+	shortcode = normalizeShortcode(shortcode)
 	id := big.NewInt(0)
 	for _, c := range shortcode {
 		idx := strings.IndexRune(alphabet, c)
@@ -182,57 +222,52 @@ func shortcodeToMediaID(shortcode string) string {
 	return id.String()
 }
 
-func fetchMediaInfo(shortcode string, igCookies map[string]string) (*MediaInfo, error) {
+func mediaInfoEndpoints(mediaID string) []string {
+	return []string{
+		fmt.Sprintf("https://www.instagram.com/api/v1/media/%s/info/", mediaID),
+		fmt.Sprintf("https://i.instagram.com/api/v1/media/%s/info/", mediaID),
+	}
+}
+
+func fetchMediaInfo(shortcode string, referer string, igCookies map[string]string) (*MediaInfo, error) {
 	mediaID := shortcodeToMediaID(shortcode)
-	apiURL := fmt.Sprintf("https://i.instagram.com/api/v1/media/%s/info/", mediaID)
-
-	req, err := http.NewRequest("GET", apiURL, nil)
-	if err != nil {
-		return nil, err
+	if referer == "" {
+		referer = fmt.Sprintf("https://www.instagram.com/p/%s/", shortcode)
 	}
 
-	req.Header.Set("Cookie", buildCookieHeader(igCookies))
-	req.Header.Set("User-Agent", browserUA)
-	req.Header.Set("X-IG-App-ID", igAppID)
-	req.Header.Set("X-Requested-With", "XMLHttpRequest")
-	req.Header.Set("Accept", "*/*")
-	req.Header.Set("Origin", "https://www.instagram.com")
-	req.Header.Set("Referer", "https://www.instagram.com/")
-	if csrf, ok := igCookies["csrftoken"]; ok {
-		req.Header.Set("X-CSRFToken", csrf)
-	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("API isteği başarısız: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("response okunamadı: %w", err)
-	}
-
-	if resp.StatusCode != 200 {
-		preview := string(body)
-		if len(preview) > 300 {
-			preview = preview[:300]
+	var lastErr error
+	for _, apiURL := range mediaInfoEndpoints(mediaID) {
+		body, err := instagramAPIRequest("GET", apiURL, referer, igCookies)
+		if err != nil {
+			lastErr = fmt.Errorf("API isteği başarısız: %w", err)
+			continue
 		}
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, preview)
+
+		var raw map[string]interface{}
+		if err := json.Unmarshal(body, &raw); err != nil {
+			lastErr = fmt.Errorf("JSON parse hatası: %w", err)
+			continue
+		}
+
+		items, ok := raw["items"].([]interface{})
+		if !ok || len(items) == 0 {
+			lastErr = fmt.Errorf("medya bulunamadı")
+			continue
+		}
+
+		first, ok := items[0].(map[string]interface{})
+		if !ok {
+			lastErr = fmt.Errorf("medya yanıtı geçersiz")
+			continue
+		}
+
+		return parseAPIItem(first, shortcode)
 	}
 
-	var raw map[string]interface{}
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, fmt.Errorf("JSON parse hatası: %w", err)
+	if lastErr == nil {
+		lastErr = fmt.Errorf("medya bilgisi alınamadı")
 	}
-
-	items, ok := raw["items"].([]interface{})
-	if !ok || len(items) == 0 {
-		return nil, fmt.Errorf("medya bulunamadı")
-	}
-
-	return parseAPIItem(items[0].(map[string]interface{}), shortcode)
+	return nil, lastErr
 }
 
 func parseAPIItem(item map[string]interface{}, shortcode string) (*MediaInfo, error) {
@@ -263,7 +298,10 @@ func parseAPIItem(item map[string]interface{}, shortcode string) (*MediaInfo, er
 		info.MediaType = "carousel"
 		if carousel, ok := item["carousel_media"].([]interface{}); ok {
 			for _, cm := range carousel {
-				cmMap := cm.(map[string]interface{})
+				cmMap, ok := cm.(map[string]interface{})
+				if !ok {
+					continue
+				}
 				cmType := int(toFloat(cmMap, "media_type"))
 				if cmType == 2 {
 					info.Items = append(info.Items, getBestVideo(cmMap)...)
@@ -284,6 +322,32 @@ func toFloat(m map[string]interface{}, key string) float64 {
 	return 0
 }
 
+func pickBestVersion(versions []interface{}, mediaType string) []MediaItem {
+	var best MediaItem
+	bestArea := -1
+
+	for _, raw := range versions {
+		version, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		item := mediaItemFromVersion(version, mediaType)
+		if item.URL == "" {
+			continue
+		}
+		area := itemArea(item)
+		if area > bestArea {
+			best = item
+			bestArea = area
+		}
+	}
+
+	if best.URL == "" {
+		return nil
+	}
+	return []MediaItem{best}
+}
+
 func getBestImage(item map[string]interface{}) []MediaItem {
 	iv2, ok := item["image_versions2"].(map[string]interface{})
 	if !ok {
@@ -293,14 +357,7 @@ func getBestImage(item map[string]interface{}) []MediaItem {
 	if !ok || len(candidates) == 0 {
 		return nil
 	}
-
-	best := candidates[0].(map[string]interface{})
-	return []MediaItem{{
-		Type:   "image",
-		URL:    strVal(best, "url"),
-		Width:  int(toFloat(best, "width")),
-		Height: int(toFloat(best, "height")),
-	}}
+	return pickBestVersion(candidates, "image")
 }
 
 func getBestVideo(item map[string]interface{}) []MediaItem {
@@ -308,14 +365,7 @@ func getBestVideo(item map[string]interface{}) []MediaItem {
 	if !ok || len(versions) == 0 {
 		return nil
 	}
-
-	best := versions[0].(map[string]interface{})
-	return []MediaItem{{
-		Type:   "video",
-		URL:    strVal(best, "url"),
-		Width:  int(toFloat(best, "width")),
-		Height: int(toFloat(best, "height")),
-	}}
+	return pickBestVersion(versions, "video")
 }
 
 func strVal(m map[string]interface{}, key string) string {
@@ -338,12 +388,7 @@ func stringifyID(v interface{}) string {
 	}
 }
 
-func instagramAPIRequest(method, apiURL, referer string, igCookies map[string]string) ([]byte, error) {
-	req, err := http.NewRequest(method, apiURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
+func setInstagramAPIHeaders(req *http.Request, referer string, igCookies map[string]string) {
 	req.Header.Set("Cookie", buildCookieHeader(igCookies))
 	req.Header.Set("User-Agent", browserUA)
 	req.Header.Set("X-IG-App-ID", igAppID)
@@ -356,7 +401,9 @@ func instagramAPIRequest(method, apiURL, referer string, igCookies map[string]st
 	if csrf, ok := igCookies["csrftoken"]; ok {
 		req.Header.Set("X-CSRFToken", csrf)
 	}
+}
 
+func doInstagramAPIRequest(req *http.Request) ([]byte, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -378,6 +425,248 @@ func instagramAPIRequest(method, apiURL, referer string, igCookies map[string]st
 	}
 
 	return body, nil
+}
+
+func instagramAPIRequest(method, apiURL, referer string, igCookies map[string]string) ([]byte, error) {
+	req, err := http.NewRequest(method, apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	setInstagramAPIHeaders(req, referer, igCookies)
+	return doInstagramAPIRequest(req)
+}
+
+func instagramAPIPost(apiURL, referer string, formData url.Values, igCookies map[string]string) ([]byte, error) {
+	req, err := http.NewRequest("POST", apiURL, strings.NewReader(formData.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	setInstagramAPIHeaders(req, referer, igCookies)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return doInstagramAPIRequest(req)
+}
+
+func mediaItemFromVersion(version map[string]interface{}, mediaType string) MediaItem {
+	return MediaItem{
+		Type:   mediaType,
+		URL:    strVal(version, "url"),
+		Width:  int(toFloat(version, "width")),
+		Height: int(toFloat(version, "height")),
+	}
+}
+
+func bestMediaFromCoverMedia(coverMedia map[string]interface{}) (MediaItem, bool) {
+	if full, ok := coverMedia["full_image_version"].(map[string]interface{}); ok {
+		if item := mediaItemFromVersion(full, "image"); item.URL != "" {
+			return item, true
+		}
+	}
+
+	if images := getBestImage(coverMedia); len(images) > 0 && images[0].URL != "" {
+		return images[0], true
+	}
+
+	if videos := getBestVideo(coverMedia); len(videos) > 0 && videos[0].URL != "" {
+		return videos[0], true
+	}
+
+	if cropped, ok := coverMedia["cropped_image_version"].(map[string]interface{}); ok {
+		if item := mediaItemFromVersion(cropped, "image"); item.URL != "" {
+			return item, true
+		}
+	}
+
+	return MediaItem{}, false
+}
+
+func parseHighlightCover(highlight map[string]interface{}) (HighlightCover, error) {
+	title := strVal(highlight, "title")
+	if title == "" {
+		title = "highlight"
+	}
+
+	id := strVal(highlight, "id")
+	if id == "" {
+		id = strVal(highlight, "strong_id__")
+	}
+	if id == "" {
+		return HighlightCover{}, fmt.Errorf("öne çıkan kimliği bulunamadı")
+	}
+
+	coverMedia, ok := highlight["cover_media"].(map[string]interface{})
+	if !ok || coverMedia == nil {
+		return HighlightCover{}, fmt.Errorf("öne çıkan kapağı bulunamadı: %s", title)
+	}
+
+	item, ok := bestMediaFromCoverMedia(coverMedia)
+	if !ok {
+		return HighlightCover{}, fmt.Errorf("öne çıkan kapağı bulunamadı: %s", title)
+	}
+
+	return HighlightCover{Title: title, ID: id, Item: item}, nil
+}
+
+func itemArea(item MediaItem) int {
+	if item.Width > 0 && item.Height > 0 {
+		return item.Width * item.Height
+	}
+	return 0
+}
+
+func ensureHighlightReelID(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	if strings.HasPrefix(id, "highlight:") {
+		return id
+	}
+	return "highlight:" + id
+}
+
+func highlightNumericID(id string) string {
+	return strings.TrimPrefix(ensureHighlightReelID(id), "highlight:")
+}
+
+func sanitizeFilenamePart(value string) string {
+	value = strings.TrimSpace(value)
+	value = filenameSanitizer.ReplaceAllString(value, "_")
+	value = strings.Trim(value, "._-")
+	if value == "" {
+		return "highlight"
+	}
+	return value
+}
+
+func mediaFileExt(item MediaItem) string {
+	ext := filepath.Ext(strings.Split(item.URL, "?")[0])
+	if ext != "" {
+		return ext
+	}
+	if item.Type == "video" {
+		return ".mp4"
+	}
+	return ".jpg"
+}
+
+func fetchHighlightReels(highlightIDs []string, referer string, igCookies map[string]string) (map[string]map[string]interface{}, error) {
+	if len(highlightIDs) == 0 {
+		return map[string]map[string]interface{}{}, nil
+	}
+
+	quoted := make([]string, len(highlightIDs))
+	for i, id := range highlightIDs {
+		quoted[i] = fmt.Sprintf(`"%s"`, ensureHighlightReelID(id))
+	}
+
+	form := url.Values{}
+	form.Set("reel_ids", fmt.Sprintf("[%s]", strings.Join(quoted, ",")))
+
+	body, err := instagramAPIPost(
+		"https://www.instagram.com/api/v1/feed/reels_media/",
+		referer,
+		form,
+		igCookies,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("öne çıkan detayları okunamadı: %w", err)
+	}
+
+	reelsRaw, ok := raw["reels"].(map[string]interface{})
+	if !ok {
+		return map[string]map[string]interface{}{}, nil
+	}
+
+	result := make(map[string]map[string]interface{}, len(reelsRaw))
+	for key, value := range reelsRaw {
+		reel, ok := value.(map[string]interface{})
+		if ok {
+			result[ensureHighlightReelID(key)] = reel
+		}
+	}
+	return result, nil
+}
+
+func fetchUserHighlights(username string, igCookies map[string]string) ([]HighlightCover, error) {
+	userID, err := fetchInstagramUserID(username, igCookies)
+	if err != nil {
+		return nil, err
+	}
+
+	referer := fmt.Sprintf("https://www.instagram.com/%s/", username)
+	apiURL := fmt.Sprintf("https://www.instagram.com/api/v1/highlights/%s/highlights_tray/", userID)
+	body, err := instagramAPIRequest("GET", apiURL, referer, igCookies)
+	if err != nil {
+		return nil, fmt.Errorf("öne çıkanlar alınamadı: %w", err)
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("öne çıkan yanıtı okunamadı: %w", err)
+	}
+
+	tray, ok := raw["tray"].([]interface{})
+	if !ok || len(tray) == 0 {
+		return nil, fmt.Errorf("öne çıkan bulunamadı")
+	}
+
+	covers := make([]HighlightCover, 0, len(tray))
+	for _, entry := range tray {
+		highlight, ok := entry.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		cover, err := parseHighlightCover(highlight)
+		if err != nil {
+			continue
+		}
+		cover.ID = ensureHighlightReelID(cover.ID)
+		covers = append(covers, cover)
+	}
+
+	if len(covers) == 0 {
+		return nil, fmt.Errorf("öne çıkan kapağı bulunamadı")
+	}
+
+	return covers, nil
+}
+
+func fetchHighlightStories(highlightID string, igCookies map[string]string) (string, string, []MediaItem, error) {
+	reelKey := ensureHighlightReelID(highlightID)
+	numericID := highlightNumericID(highlightID)
+	referer := fmt.Sprintf("https://www.instagram.com/stories/highlights/%s/", numericID)
+
+	reels, err := fetchHighlightReels([]string{reelKey}, referer, igCookies)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("öne çıkan içerikleri alınamadı: %w", err)
+	}
+
+	reel, ok := reels[reelKey]
+	if !ok || reel == nil {
+		return "", "", nil, fmt.Errorf("öne çıkan bulunamadı")
+	}
+
+	items, err := parseStoryItems(reel, "")
+	if err != nil {
+		return "", "", nil, err
+	}
+
+	title := strVal(reel, "title")
+	if title == "" {
+		title = numericID
+	}
+
+	username := ""
+	if user, ok := reel["user"].(map[string]interface{}); ok {
+		username = strVal(user, "username")
+	}
+
+	return title, username, items, nil
 }
 
 func fetchInstagramUserID(username string, igCookies map[string]string) (string, error) {
@@ -465,6 +754,23 @@ func parseStoryItems(reel map[string]interface{}, storyID string) ([]MediaItem, 
 		switch mediaType {
 		case 2:
 			items = append(items, getBestVideo(item)...)
+		case 8:
+			if carousel, ok := item["carousel_media"].([]interface{}); ok {
+				for _, cm := range carousel {
+					cmMap, ok := cm.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					cmType := int(toFloat(cmMap, "media_type"))
+					if cmType == 2 {
+						items = append(items, getBestVideo(cmMap)...)
+					} else {
+						items = append(items, getBestImage(cmMap)...)
+					}
+				}
+			} else {
+				items = append(items, getBestImage(item)...)
+			}
 		default:
 			items = append(items, getBestImage(item)...)
 		}
@@ -510,12 +816,15 @@ func fetchUserStories(username, storyID string, igCookies map[string]string) ([]
 	return parseStoryItems(reel, storyID)
 }
 
-func downloadFile(url, destPath string) (int64, error) {
-	req, err := http.NewRequest("GET", url, nil)
+func downloadFile(mediaURL, destPath string) (int64, error) {
+	req, err := http.NewRequest("GET", mediaURL, nil)
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("User-Agent", browserUA)
+	req.Header.Set("Referer", "https://www.instagram.com/")
+	req.Header.Set("Origin", "https://www.instagram.com")
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
 
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
@@ -643,7 +952,9 @@ func main() {
 
 	app := fiber.New(fiber.Config{BodyLimit: 10 * 1024 * 1024})
 	app.Use(logger.New())
-	app.Use(cors.New())
+	app.Use(cors.New(cors.Config{
+		ExposeHeaders: "Content-Length, Content-Range, Accept-Ranges",
+	}))
 	app.Static("/downloads", "./downloads", fiber.Static{
 		ByteRange: true,
 	})
@@ -695,16 +1006,7 @@ func main() {
 			}
 
 			for i, item := range storyItems {
-				ext := filepath.Ext(strings.Split(item.URL, "?")[0])
-				if ext == "" {
-					if item.Type == "video" {
-						ext = ".mp4"
-					} else {
-						ext = ".jpg"
-					}
-				}
-
-				filename := fmt.Sprintf("%s_%d%s", response.Shortcode, i+1, ext)
+				filename := fmt.Sprintf("%s_%d%s", response.Shortcode, i+1, mediaFileExt(item))
 				destPath := filepath.Join(outDir, filename)
 
 				size, err := downloadFile(item.URL, destPath)
@@ -721,6 +1023,92 @@ func main() {
 					Size:     size,
 					Width:    item.Width,
 					Height:   item.Height,
+				})
+			}
+
+			return c.JSON(response)
+		}
+
+		if parsed.IsHighlight {
+			outDir := filepath.Join(downloadDir, "highlight_"+parsed.HighlightID)
+			os.MkdirAll(outDir, 0755)
+
+			title, username, highlightItems, err := fetchHighlightStories(parsed.HighlightID, igCookies)
+			if err != nil {
+				return c.Status(500).JSON(DownloadResponse{
+					Success: false, Error: err.Error(),
+				})
+			}
+
+			response := DownloadResponse{
+				Success:   true,
+				Shortcode: parsed.HighlightID,
+				Username:  username,
+				Caption:   title,
+				MediaType: "highlight",
+			}
+
+			baseName := sanitizeFilenamePart(title)
+			for i, item := range highlightItems {
+				filename := fmt.Sprintf("%s_%d%s", baseName, i+1, mediaFileExt(item))
+				destPath := filepath.Join(outDir, filename)
+
+				size, err := downloadFile(item.URL, destPath)
+				if err != nil {
+					return c.Status(500).JSON(DownloadResponse{
+						Success: false, Error: fmt.Sprintf("Öne çıkan indirilemedi (%s): %v", title, err),
+					})
+				}
+
+				response.Files = append(response.Files, DownloadedFile{
+					Filename: filename,
+					Path:     "/" + filepath.ToSlash(destPath),
+					Type:     item.Type,
+					Size:     size,
+					Width:    item.Width,
+					Height:   item.Height,
+				})
+			}
+
+			return c.JSON(response)
+		}
+
+		if parsed.IsProfile {
+			outDir := filepath.Join(downloadDir, "highlights_"+parsed.Username)
+			os.MkdirAll(outDir, 0755)
+
+			highlights, err := fetchUserHighlights(parsed.Username, igCookies)
+			if err != nil {
+				return c.Status(500).JSON(DownloadResponse{
+					Success: false, Error: err.Error(),
+				})
+			}
+
+			response := DownloadResponse{
+				Success:   true,
+				Shortcode: parsed.Username,
+				Username:  parsed.Username,
+				MediaType: "highlight_covers",
+			}
+
+			for i, highlight := range highlights {
+				filename := fmt.Sprintf("%s_%d%s", sanitizeFilenamePart(highlight.Title), i+1, mediaFileExt(highlight.Item))
+				destPath := filepath.Join(outDir, filename)
+
+				size, err := downloadFile(highlight.Item.URL, destPath)
+				if err != nil {
+					return c.Status(500).JSON(DownloadResponse{
+						Success: false, Error: fmt.Sprintf("Öne çıkan indirilemedi (%s): %v", highlight.Title, err),
+					})
+				}
+
+				response.Files = append(response.Files, DownloadedFile{
+					Filename: filename,
+					Path:     "/" + filepath.ToSlash(destPath),
+					Type:     highlight.Item.Type,
+					Size:     size,
+					Width:    highlight.Item.Width,
+					Height:   highlight.Item.Height,
 				})
 			}
 
@@ -768,7 +1156,11 @@ func main() {
 			Shortcode: parsed.Shortcode,
 		}
 
-		mediaInfo, apiErr := fetchMediaInfo(parsed.Shortcode, igCookies)
+		referer := fmt.Sprintf("https://www.instagram.com/p/%s/", parsed.Shortcode)
+		if parsed.IsReel {
+			referer = fmt.Sprintf("https://www.instagram.com/reel/%s/", parsed.Shortcode)
+		}
+		mediaInfo, apiErr := fetchMediaInfo(parsed.Shortcode, referer, igCookies)
 		if apiErr == nil {
 			response.Username = mediaInfo.Username
 			response.Caption = mediaInfo.Caption
@@ -806,11 +1198,7 @@ func main() {
 			}
 
 			for i, item := range mediaInfo.Items {
-				ext := ".jpg"
-				if item.Type == "video" {
-					ext = ".mp4"
-				}
-				filename := fmt.Sprintf("%s_%d%s", parsed.Shortcode, i+1, ext)
+				filename := fmt.Sprintf("%s_%d%s", parsed.Shortcode, i+1, mediaFileExt(item))
 				destPath := filepath.Join(outDir, filename)
 
 				size, err := downloadFile(item.URL, destPath)
@@ -825,6 +1213,12 @@ func main() {
 					Size:     size,
 					Width:    item.Width,
 					Height:   item.Height,
+				})
+			}
+
+			if len(response.Files) == 0 {
+				return c.Status(500).JSON(DownloadResponse{
+					Success: false, Error: "Hiçbir medya dosyası indirilemedi",
 				})
 			}
 		}

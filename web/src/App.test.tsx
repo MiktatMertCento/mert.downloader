@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 
 vi.mock('./lib/api', () => ({
@@ -6,14 +6,20 @@ vi.mock('./lib/api', () => ({
     downloadMedia: vi.fn(),
 }))
 
-import { checkHealth } from './lib/api'
+import { checkHealth, downloadMedia } from './lib/api'
 import App from './App'
 
 const mockedCheckHealth = checkHealth as ReturnType<typeof vi.fn>
+const mockedDownloadMedia = downloadMedia as ReturnType<typeof vi.fn>
 
 describe('App', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        window.history.replaceState({}, '', '/')
+    })
+
+    afterEach(() => {
+        window.history.replaceState({}, '', '/')
     })
 
     it('renders heading and form', async () => {
@@ -43,6 +49,30 @@ describe('App', () => {
 
         await waitFor(() => {
             expect(screen.getByTestId('server-status')).toHaveTextContent('Bağlantı yok')
+        })
+    })
+
+    it('auto-submits when opened via share target', async () => {
+        window.history.pushState({}, '', '/?url=https%3A%2F%2Fwww.instagram.com%2Fp%2FABC123%2F')
+        mockedCheckHealth.mockResolvedValue({ status: 'ok', user_id: '123' })
+        mockedDownloadMedia.mockResolvedValue({
+            success: true,
+            shortcode: 'ABC123',
+            media_type: 'image',
+            username: 'testuser',
+            files: [],
+        })
+
+        render(<App />)
+
+        expect(screen.getByLabelText('Video URL')).toHaveValue('https://www.instagram.com/p/ABC123/')
+
+        await waitFor(() => {
+            expect(mockedDownloadMedia).toHaveBeenCalledWith('https://www.instagram.com/p/ABC123/')
+        })
+
+        await waitFor(() => {
+            expect(screen.getByText('İndirme Başarılı')).toBeInTheDocument()
         })
     })
 })

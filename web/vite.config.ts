@@ -60,13 +60,27 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           navigateFallback: '/index.html',
+          navigateFallbackDenylist: [/^\/api/, /^\/downloads/],
+          runtimeCaching: [
+            {
+              urlPattern: ({ url }) => url.pathname.startsWith('/downloads/'),
+              handler: 'NetworkOnly',
+            },
+            {
+              urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+              handler: 'NetworkOnly',
+            },
+          ],
         },
       }),
     ],
     server: {
       proxy: {
         '/api': 'http://localhost:1905',
-        '/downloads': 'http://localhost:1905',
+        '/downloads': {
+          target: 'http://localhost:1905',
+          changeOrigin: true,
+        },
       },
     },
   }
