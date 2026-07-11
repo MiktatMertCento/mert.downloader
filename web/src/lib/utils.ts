@@ -4,6 +4,19 @@ export function formatSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+export function formatEta(seconds: number): string {
+    const safe = Math.max(0, Math.round(seconds))
+    if (safe < 60) return `~${safe} sn`
+    const minutes = Math.floor(safe / 60)
+    const rem = safe % 60
+    if (minutes < 60) {
+        return rem > 0 ? `~${minutes} dk ${rem} sn` : `~${minutes} dk`
+    }
+    const hours = Math.floor(minutes / 60)
+    const mins = minutes % 60
+    return mins > 0 ? `~${hours} sa ${mins} dk` : `~${hours} sa`
+}
+
 export function isSmallPreviewMedia(file: { width?: number; height?: number }): boolean {
     if (!file.width || !file.height) return false
     return Math.max(file.width, file.height) <= 360

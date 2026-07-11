@@ -1,6 +1,19 @@
-*.exe
-downloads/
+# Build context noise / secrets / local artifacts
 .git/
-.gitignore
+.github/
+.idea/
+.vscode/
+.env
+*.exe
+insta-downloader
+downloads/
+models/*.onnx
+models/*.pth
+cookies.txt
 README.md
 web/node_modules/
+web/dist/
+web/src/**/*.test.ts
+web/src/**/*.test.tsx
+**/__pycache__/
+**/.DS_Store

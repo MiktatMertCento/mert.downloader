@@ -59,9 +59,34 @@ export default defineConfig(({ mode }) => {
           },
         },
         workbox: {
+          // Hashed JS/CSS/icons only — never long-precache index.html
+          globPatterns: ['**/*.{js,css,ico,png,svg,woff2,webmanifest}'],
           navigateFallback: '/index.html',
           navigateFallbackDenylist: [/^\/api/, /^\/downloads/],
+          cleanupOutdatedCaches: true,
+          clientsClaim: true,
+          skipWaiting: true,
           runtimeCaching: [
+            {
+              urlPattern: ({ request }) => request.mode === 'navigate',
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'html-navigations',
+                networkTimeoutSeconds: 3,
+                expiration: {
+                  maxEntries: 8,
+                  maxAgeSeconds: 60 * 60 * 24,
+                },
+              },
+            },
+            {
+              urlPattern: ({ url }) => url.pathname === '/index.html',
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'html-shell',
+                networkTimeoutSeconds: 3,
+              },
+            },
             {
               urlPattern: ({ url }) => url.pathname.startsWith('/downloads/'),
               handler: 'NetworkOnly',

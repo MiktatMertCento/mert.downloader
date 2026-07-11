@@ -96,7 +96,15 @@ export default function MediaCarousel({
 
     useEffect(() => {
         setIndex(initialIndex)
-    }, [initialIndex, files])
+    }, [initialIndex])
+
+    useEffect(() => {
+        if (files.length === 0) return
+        if (index < files.length) return
+        const next = files.length - 1
+        setIndex(next)
+        onIndexChange?.(next)
+    }, [files.length, index, onIndexChange])
 
     useEffect(() => {
         const cache = cacheRef.current

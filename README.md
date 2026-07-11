@@ -2,6 +2,26 @@
 
 Instagram ve YouTube içeriklerini en yüksek kalitede indiren Go API sunucusu.
 
+## 📁 Proje Yapısı
+
+```
+cmd/server/                 # proses giriş noktası
+internal/
+  config/                   # env + sabitler
+  domain/                   # paylaşılan DTO / domain modelleri
+  mediaurl/                 # URL parse (IG + YouTube)
+  cookies/                  # Netscape cookie okuma
+  fetch/                    # HTTP indirme + yt-dlp + cleanup
+  instagram/                # Instagram API + parse
+  downloader/               # use-case orkestrasyonu
+  httpserver/               # ince Fiber HTTP katmanı
+  upscale/                  # 2x Real-ESRGAN job yöneticisi
+tools/upscale/              # ONNX export + inference
+web/                        # React frontend
+models/                     # runtime ONNX (Docker build üretir)
+downloads/                  # indirilen medya (gitignore)
+```
+
 ## 🎯 Desteklenen Platformlar ve URL'ler
 
 | Platform | URL Formatı | İçerik |
@@ -39,9 +59,13 @@ docker compose up -d
 ```
 
 Bu komut:
-- Go uygulamasını derler
-- `ffmpeg` ve `yt-dlp` araclarını yükler
+- Frontend'i derler
+- RealESRGAN x2plus modelini ONNX'e çevirir (amd64/arm64)
+- Go uygulamasını derler ve test eder
+- `ffmpeg`, `yt-dlp` ve `onnxruntime` ile runtime image oluşturur
 - Sunucuyu `http://localhost:1905` adresinde başlatır
+
+> Image hem geliştirme makinesinde (x86_64) hem Raspberry Pi 5 (arm64) üzerinde `docker build` ile üretilebilir; aynı Dockerfile kullanılır.
 
 ### Durdurma
 
@@ -67,8 +91,11 @@ docker run -d \
 ## 🧪 Testler
 
 ```bash
-# Container içinde testleri çalıştır
-docker run --rm insta-downloader go test -v ./...
+# Backend
+go test -count=1 ./...
+
+# Frontend
+cd web && pnpm test -- --run
 ```
 
 ## 📡 API Kullanımı
@@ -82,9 +109,36 @@ curl http://localhost:1905/api/health
 ```json
 {
   "status": "ok",
-  "user_id": "123456789"
+  "user_id": "123456789",
+  "upscale_ready": true
 }
 ```
+
+### ✨ 2x Netleştir / Upscale
+
+Önizlemede açık olan görsel için UI'daki **2x Netleştir** butonu kullanılır. API:
+
+```bash
+# Job başlat
+curl -X POST http://localhost:1905/api/upscale \
+  -H "Content-Type: application/json" \
+  -d '{"path":"/downloads/ABC123/photo.jpg"}'
+
+# Durum / kalan süre
+curl http://localhost:1905/api/upscale/<job-id>
+```
+
+```json
+{
+  "id": "...",
+  "status": "running",
+  "percent": 42.5,
+  "eta_seconds": 18,
+  "elapsed_seconds": 12.3
+}
+```
+
+Model: resmi **RealESRGAN_x2plus** (kaliteli genel fotoğraf 2x). İşlem tile tabanlıdır; Pi 5'te tipik IG gönderileri genelde 1–2 dk içinde biter.
 
 ### 📷 Instagram Post İndirme
 

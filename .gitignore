@@ -5,6 +5,11 @@ insta-downloader
 # Downloads
 downloads/
 
+# Upscale model artifacts (baked into Docker image at build time)
+models/*.onnx
+models/*.pth
+!models/.gitkeep
+
 # Cookies
 cookies.txt
 
