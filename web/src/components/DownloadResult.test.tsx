@@ -170,6 +170,26 @@ describe('DownloadResult', () => {
         expect(video.getAttribute('x5-playsinline')).toBe('true')
     })
 
+    it('closes image preview via the close button even when enhance controls are visible', async () => {
+        const user = userEvent.setup()
+        const data: DownloadResponse = {
+            success: true,
+            shortcode: 'IMG',
+            media_type: 'image',
+            username: 'user',
+            files: [{ filename: 'photo.jpg', path: '/downloads/IMG/photo.jpg', type: 'image', size: 1024, width: 1080, height: 1350 }],
+        }
+
+        render(<DownloadResult data={data} error={null} />)
+        await user.click(screen.getByLabelText('Önizle'))
+
+        expect(screen.getByRole('dialog')).toBeInTheDocument()
+        expect(screen.getByTestId('enhance-button')).toBeInTheDocument()
+
+        await user.click(screen.getByTestId('preview-close'))
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
     it('opens fullscreen carousel preview for multi-file downloads', async () => {
         const user = userEvent.setup()
         const data: DownloadResponse = {

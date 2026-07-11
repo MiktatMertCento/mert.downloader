@@ -195,79 +195,87 @@ function PreviewModal({
             role="dialog"
             aria-modal="true"
             aria-label="Önizleme"
-            style={{ overscrollBehavior: 'contain', touchAction: 'manipulation' }}
+            style={{ overscrollBehavior: 'contain' }}
         >
-            <button
-                onClick={onClose}
-                className="absolute top-[max(0.75rem,env(safe-area-inset-top))] right-[max(0.75rem,env(safe-area-inset-right))] z-20 w-10 h-10 bg-surface border-2 border-surface-lighter rounded-full flex items-center justify-center text-text shadow-lg hover:text-primary-light hover:border-primary-light hover:scale-110 transition-all cursor-pointer"
-                aria-label="Kapat"
+            <header
+                className="relative z-50 flex shrink-0 items-start gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))]"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
             >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-            </button>
-
-            {current?.type === 'image' && (
-                <div
-                    className="absolute top-[max(0.75rem,env(safe-area-inset-top))] left-1/2 z-20 flex w-[min(92vw,24rem)] -translate-x-1/2 flex-col items-center gap-2"
-                    onClick={(e) => e.stopPropagation()}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onPointerUp={(e) => e.stopPropagation()}
-                >
-                    {isUpscaling && upscaleJob ? (
-                        <UpscaleProgress job={upscaleJob} />
-                    ) : (
-                        <div className="flex flex-wrap items-center justify-center gap-2">
-                            <button
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    void handleEnhance()
-                                }}
-                                disabled={!canEnhance}
-                                className="rounded-full border border-primary/40 bg-surface/95 px-4 py-2 text-sm font-semibold text-primary-light shadow-lg transition hover:border-primary-light hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-                                data-testid="enhance-button"
-                            >
-                                2x Netleştir
-                            </button>
-                            {canCompare && (
-                                <button
-                                    type="button"
-                                    onPointerDown={startComparing}
-                                    onPointerUp={stopComparing}
-                                    onPointerCancel={stopComparing}
-                                    onLostPointerCapture={() => setComparing(false)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onContextMenu={(e) => e.preventDefault()}
-                                    className={`select-none rounded-full border px-4 py-2 text-sm font-semibold shadow-lg transition cursor-pointer touch-none ${
-                                        comparing
-                                            ? 'border-accent/50 bg-accent/20 text-accent-light'
-                                            : 'border-surface-lighter/60 bg-surface/95 text-text hover:border-primary-light'
-                                    }`}
-                                    data-testid="compare-button"
-                                    aria-pressed={comparing}
-                                >
-                                    {comparing ? 'Önceki' : 'Farkı gör'}
-                                </button>
+                <div className="min-w-0 flex-1 flex flex-col items-center gap-2">
+                    {current?.type === 'image' && (
+                        <>
+                            {isUpscaling && upscaleJob ? (
+                                <UpscaleProgress job={upscaleJob} />
+                            ) : (
+                                <div className="flex flex-wrap items-center justify-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            void handleEnhance()
+                                        }}
+                                        disabled={!canEnhance}
+                                        className="rounded-full border border-primary/40 bg-surface/95 px-4 py-2 text-sm font-semibold text-primary-light shadow-lg transition hover:border-primary-light hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                                        data-testid="enhance-button"
+                                    >
+                                        2x Netleştir
+                                    </button>
+                                    {canCompare && (
+                                        <button
+                                            type="button"
+                                            onPointerDown={startComparing}
+                                            onPointerUp={stopComparing}
+                                            onPointerCancel={stopComparing}
+                                            onLostPointerCapture={() => setComparing(false)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            onContextMenu={(e) => e.preventDefault()}
+                                            className={`select-none rounded-full border px-4 py-2 text-sm font-semibold shadow-lg transition cursor-pointer touch-none ${
+                                                comparing
+                                                    ? 'border-accent/50 bg-accent/20 text-accent-light'
+                                                    : 'border-surface-lighter/60 bg-surface/95 text-text hover:border-primary-light'
+                                            }`}
+                                            data-testid="compare-button"
+                                            aria-pressed={comparing}
+                                        >
+                                            {comparing ? 'Önceki' : 'Farkı gör'}
+                                        </button>
+                                    )}
+                                </div>
                             )}
-                        </div>
-                    )}
-                    {canCompare && !isUpscaling && (
-                        <p className="text-[11px] text-text-muted" data-testid="compare-hint">
-                            {comparing ? 'Eski hali gösteriliyor' : 'Farkı gör: basılı tut'}
-                        </p>
-                    )}
-                    {upscaleError && (
-                        <p className="rounded-lg bg-red-500/15 px-3 py-1.5 text-xs text-red-300" data-testid="upscale-error">
-                            {upscaleError}
-                        </p>
+                            {canCompare && !isUpscaling && (
+                                <p className="text-[11px] text-text-muted" data-testid="compare-hint">
+                                    {comparing ? 'Eski hali gösteriliyor' : 'Farkı gör: basılı tut'}
+                                </p>
+                            )}
+                            {upscaleError && (
+                                <p className="rounded-lg bg-red-500/15 px-3 py-1.5 text-xs text-red-300" data-testid="upscale-error">
+                                    {upscaleError}
+                                </p>
+                            )}
+                        </>
                     )}
                 </div>
-            )}
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation()
+                        onClose()
+                    }}
+                    className="relative z-50 shrink-0 w-10 h-10 bg-surface border-2 border-surface-lighter rounded-full flex items-center justify-center text-text shadow-lg hover:text-primary-light hover:border-primary-light hover:scale-110 transition-all cursor-pointer"
+                    aria-label="Kapat"
+                    data-testid="preview-close"
+                >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </header>
 
             <div
-                className="flex flex-1 min-h-0 w-full items-center justify-center px-3 pt-[max(5.5rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
+                className="flex flex-1 min-h-0 w-full items-center justify-center px-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
                 onClick={(e) => e.stopPropagation()}
+                style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
             >
                 {isMulti ? (
                     <MediaCarousel
