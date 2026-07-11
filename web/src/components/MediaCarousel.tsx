@@ -132,11 +132,21 @@ export default function MediaCarousel({
     }, [goNext, goPrev, variant])
 
     const onTouchStart = (event: React.TouchEvent) => {
+        // Multi-touch = pinch zoom; don't steal the gesture for swipe
+        if (event.touches.length > 1) {
+            touchStartX.current = 0
+            touchDeltaX.current = 0
+            return
+        }
         touchStartX.current = event.touches[0].clientX
         touchDeltaX.current = 0
     }
 
     const onTouchMove = (event: React.TouchEvent) => {
+        if (event.touches.length > 1) {
+            touchDeltaX.current = 0
+            return
+        }
         touchDeltaX.current = event.touches[0].clientX - touchStartX.current
     }
 
@@ -168,7 +178,7 @@ export default function MediaCarousel({
                 onTouchMove={onTouchMove}
                 onTouchEnd={onTouchEnd}
                 onClick={onSlideClick}
-                style={{ touchAction: 'pan-y' }}
+                style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
             >
                 <div
                     className="flex transition-transform duration-300 ease-out w-full"
